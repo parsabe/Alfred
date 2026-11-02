@@ -312,11 +312,13 @@ Each milestone is done only when:
 
 _(Claude Code updates this section as work progresses.)_
 
-- [ ] M0 Scaffold — `docs/PLAN.md` written 2026-11-02; **awaiting owner approval**
-- [ ] M1 Conversation core
+- [x] M0 Scaffold — plan approved 2026-11-02; config, auth, redaction, DB + migrations, health, tooling
+- [x] M1 Conversation core — providers (anthropic/openai/local/fake) + failover, SSE chat,
+      conversations API, persona. Report: `docs/MILESTONES.md`
+- [ ] M1.5 Voice (Fish Audio) — moved up by owner decision D2
 - [ ] M2 Tools
 - [ ] M3 Memory
 - [ ] M4 Integrations
 - [ ] M5 Proactive
 - [ ] M6 Hardening
-- [ ] M7 Voice (optional)
+- [ ] M7 Ribbon interface (`web/`) — owner decision D1 (original M7 "Voice" is now M1.5)

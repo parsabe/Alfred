@@ -1,7 +1,6 @@
 # Alfred — Implementation Plan
 
-Status: **draft, awaiting owner approval** (2026-11-02). Nothing past this document and the repo
-skeleton has been built yet. Read §12 (decisions needed) first if you only have two minutes.
+Status: **approved 2026-11-02.** Owner decisions are recorded in §12. Progress: `docs/BRIEF.md` → Status.
 
 Source of truth for requirements: `docs/BRIEF.md`. This plan says *how*; where it deviates from or
 adds to the brief, it says so and marks it **[Deviation]** or **[Addition]**. Every assumption is
@@ -313,7 +312,17 @@ confirmation** = amber pulse and a card with Approve / Reject.
 
 ---
 
-## 12. Decisions needed from you
+## 12. Decisions
+
+**Owner answers (2026-11-02):** plan approved as recommended: D1 yes (I build the ribbon UI),
+D2 yes (voice is M1.5), D4 off, D5 keep. D3 repo: `github.com/parsabe/alfred`.
+D6: everything **except Gmail and Telegram** (web search, weather, Google Calendar, IMAP/SMTP
+email, Home Assistant, files). D7: Berlin / Europe/Berlin; Alfred addresses the owner as "sir",
+Alfred Pennyworth style; owner's own name not yet given (`OWNER_NAME` empty → "sir").
+LLM: Anthropic when the owner supplies a key; until then **Gemma 3 12B via Ollama** (`local`).
+Gemma has no 13B size; 12B is the closest.
+
+Original questions:
 
 | # | Question | My recommendation |
 |---|---|---|
