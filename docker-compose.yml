@@ -1,0 +1,32 @@
+services:
+  alfred:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:////app/data/alfred.db
+      # Reach an Ollama server running on the host machine:
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - alfred-data:/app/data
+      - ./prompts:/app/prompts:ro   # edit the persona without rebuilding
+    restart: unless-stopped
+
+  # Optional: run Gemma locally in a container instead of on the host.
+  #   docker compose --profile local-llm up -d
+  #   docker compose exec ollama ollama pull gemma3:12b
+  # then set LOCAL_LLM_BASE_URL=http://ollama:11434/v1
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["local-llm"]
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+
+volumes:
+  alfred-data:
+  ollama-models:
