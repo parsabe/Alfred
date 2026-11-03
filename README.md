@@ -1,79 +1,61 @@
 # Alfred
 
-A discreet, highly capable personal assistant you talk to. Open it in a browser, tap anywhere,
-speak; Alfred answers aloud in his own voice while the ribbon moves with whoever is talking.
-The backend is a plain HTTP/SSE service, so any other interface (CLI, phone, voice device) can use it too.
+A discreet, highly capable personal assistant that lives on **your own server** and that you
+simply talk to. Say **“Alfred, …”** from your phone, watch, laptop or a speaker in the room; he
+answers aloud. Talk over him and he stops to listen.
+
+Everything runs on your machine: **Gemma 3 12B** thinks (via Ollama), **Whisper** hears,
+**Piper** speaks. No API keys, no cloud services, nothing you say leaves your server.
 
 ![The ribbon](docs/interface-reference.png)
 
-- Requirements and progress: [`docs/BRIEF.md`](docs/BRIEF.md) (Status at the bottom)
-- Design: [`docs/PLAN.md`](docs/PLAN.md)
-- API contract with curl examples: [`docs/API.md`](docs/API.md)
-
-## Quick start
-
-Needs Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+## Install (Ubuntu server)
 
 ```bash
-git clone https://github.com/parsabe/alfred && cd alfred
-make install
-cp .env.example .env
-make token          # paste the output into ALFRED_API_TOKEN in .env
+git clone https://github.com/parsabe/Alfred.git && cd Alfred
+sudo ./deploy/install.sh --tailscale
 ```
 
-Choose a model in `.env`:
+It installs Ollama + Gemma 3 12B, Alfred as a service that starts on boot, his hearing and voice,
+and Tailscale for a private `https://` address. At the end it prints **your Alfred address** and
+**access token**.
 
-- **Anthropic (recommended):** set `ANTHROPIC_API_KEY`. Default model `claude-opus-5-5`.
-- **Gemma, fully local:** install [Ollama](https://ollama.com), run `ollama pull gemma3:12b`, and
-  keep `LOCAL_LLM_BASE_URL=http://localhost:11434/v1`. With no Anthropic key, Alfred uses Gemma
-  automatically; with one, Gemma becomes the fallback.
+Then connect your devices. Phone app, Apple Watch, laptop and Raspberry Pi speaker are covered
+step by step in **[docs/DEVICES.md](docs/DEVICES.md)**.
 
-```bash
-make dev            # http://127.0.0.1:8000  (docs at /docs)
-```
-
-Open **http://127.0.0.1:8000**, enter your token (gear icon), then tap anywhere and speak.
+## Talking to him
 
 | | |
 |---|---|
-| tap / Space | talk; tap again to stop. Tapping while Alfred speaks interrupts him. |
-| `/` | type instead of speaking |
-| `,` | settings: token, conversation mode, voice, captions, recognition engine, language |
-| Esc | stop everything |
+| “Alfred, what's on today?” | he answers |
+| “Alfred?” | “Yes, sir?”, then he listens for the next sentence |
+| a follow-up within 8 s | no need to say his name again |
+| talk while he speaks | he lowers his voice, then stops and listens |
+| tap / Space | talk without saying his name |
+| `/` | type instead |
+| `,` | settings: server, token, hands-free, voice, captions, keep screen on |
 
-In **conversation mode** (on by default) Alfred listens again as soon as he finishes answering,
-so you can just keep talking.
+His personality is in `prompts/alfred_system.md`; edits apply on the next sentence.
+All settings are in `.env` (see `.env.example`; on the server: `/opt/alfred/.env`).
 
-Alfred's voice comes from Fish Audio (`FISH_AUDIO_API_KEY`). Without it, the browser's built-in
-voice stands in. Speech recognition uses the browser's own (Chrome, Edge, Safari) or, in
-Firefox or if you choose it, Fish Audio on the server.
+## Documentation
 
-**No keys yet?** `make demo` runs the interface with a stand-in brain so you can try it
-(token `demo-token-not-secret-0123456789abcdef`).
-
-Or from the command line:
-
-```bash
-curl -sN http://127.0.0.1:8000/v1/chat \
-  -H "Authorization: Bearer <your token>" -H "Content-Type: application/json" \
-  -d '{"message": "Good evening, Alfred."}'
-```
-
-Edit Alfred's persona in `prompts/alfred_system.md`. Changes apply on the next message, without a restart.
-
-## Docker
-
-```bash
-make docker-up                                   # Alfred on 127.0.0.1:8000, data in a volume
-docker compose --profile local-llm up -d ollama  # optional: Gemma in a container
-docker compose exec ollama ollama pull gemma3:12b
-```
+- [docs/DEVICES.md](docs/DEVICES.md): using Alfred on phone, watch, laptop, speaker; remote access
+- [docs/API.md](docs/API.md): the HTTP/WebSocket API with examples, for your own integrations
+- [docs/PLAN.md](docs/PLAN.md): design; [docs/BRIEF.md](docs/BRIEF.md): requirements and progress
 
 ## Development
 
+Needs Python 3.12+ and [uv](https://docs.astral.sh/uv/); for a real brain, Ollama with
+`ollama pull gemma3:12b`.
+
 ```bash
-make test        # pytest
-make check       # ruff + mypy + pytest (what CI runs)
-make fmt         # format and autofix
-make e2e         # drive the voice interface in headless Chromium (Node + Playwright)
+make install     # dependencies + git hooks
+cp .env.example .env && make token   # put the token into ALFRED_API_TOKEN
+make models      # download Whisper + Piper once
+make dev         # http://127.0.0.1:8000
+make demo        # the interface with a stand-in brain (no Ollama needed)
+make test        # unit + integration tests
+make e2e         # hands-free flow in headless Chromium (Node + Playwright)
+make check       # lint + types + tests (what CI runs)
 ```

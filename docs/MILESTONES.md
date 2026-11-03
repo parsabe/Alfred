@@ -66,3 +66,40 @@ Browser speech recognition can't run headless, so the e2e test uses the server p
 
 **Known limitations:** Chrome's built-in recognition sends audio to Google; choose "Alfred's
 server" in settings to keep audio with Fish Audio instead. No wake word yet (tap to talk).
+
+## Hands-free, fully local, every device (2026-11-03)
+
+Owner's requests: answer to "Alfred, …" without tapping; interrupt him by talking; no API keys,
+Gemma 3 12B only; one Ubuntu server (12 GB RAM) that phone, watch and other devices connect to.
+
+**Built**
+- `WS /v1/voice` + `app/core/voice_session.py`: continuous microphone stream → server-side
+  speech detection (`app/voice/vad.py`: WebRTC VAD + adaptive noise floor, pre-roll, end of speech)
+  → local transcription → wake word (`app/voice/wake.py`: start or end of a sentence, fuzzy:
+  "Alfred's", "Elfred", "Al Fred") → Gemma → Piper → audio back. States: asleep → thinking →
+  speaking → follow-up window (8 s, no name needed) → asleep. "Alfred?" alone → "Yes, sir?".
+  Sentences not addressed to him are dropped immediately (never stored or forwarded).
+- Barge-in: talking over him ducks his voice at 350 ms and interrupts at 1.2 s or once the
+  sentence is recognised; his own voice echoing back is detected and ignored. Interrupted
+  replies are recorded as such in the history so he knows he was cut off. Per-device switch.
+- Local providers (`app/voice/local.py`): faster-whisper (`base` by default for 12 GB) and Piper
+  (`en_GB-alan-medium`), downloaded once and loaded in the background; `/health` shows status.
+- Gemma by default; agent keeps context within Ollama's window (`LOCAL_LLM_CONTEXT_TOKENS`).
+  `.env.example` contains no API keys; the Fish Audio key was removed from the sandbox `.env`.
+- Devices: installable web app (manifest, service worker, icons), hands-free with screen wake
+  lock; `POST /v1/ask` (one-shot JSON, `conversation_id: "latest"`) for Apple Watch Shortcuts,
+  Wear OS, automations; `clients/speaker.py` (Pi/desktop speaker, reconnects, mutes mic while
+  speaking unless `--barge-in`); `clients/alfred_cli.py`; `docs/DEVICES.md`.
+- `deploy/install.sh` (Ubuntu): Ollama + model + context/keep-alive config, Alfred in
+  `/opt/alfred` as a hardened systemd service, models pre-downloaded, optional Tailscale HTTPS.
+
+**Tests**: 92 Python tests (wake-word cases, segmentation, the full hands-free state machine over
+a real WebSocket: ignore/wake/ack/follow-up/barge-in/echo/push-to-talk/auth, `/v1/ask`), the
+headless-Chromium e2e (fake microphone through the real page, worklet, server VAD and playback:
+ignored remark → wake → interruption → follow-up → sleep → typing), and the speaker client
+against the demo server.
+
+**Not verified here** (this sandbox can't download models or reach Ollama): real Whisper
+recognition of "Alfred", Piper's voice, and Gemma's answers. The adapters follow the installed
+libraries' APIs; the first real run is on the server. `deploy/install.sh` was syntax-checked
+but not run (no Ubuntu VM with systemd here).

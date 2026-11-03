@@ -297,7 +297,17 @@ Each milestone is done only when:
 
 ---
 
-## Owner addenda (supplied with the brief)
+## Owner addenda
+
+**2026-11-03 (supersedes the voice/LLM notes below):** fully local, no API keys. Alfred runs on the
+owner's Ubuntu server (12 GB RAM, GPU unknown) with Gemma 3 12B via Ollama, Whisper for hearing
+and Piper for speaking. Hands-free: he answers sentences starting (or ending) with "Alfred",
+can be interrupted by talking, and every device (phone app, Apple Watch, laptop, speaker)
+connects to the one server. "Alfred" is the assistant's name, not the owner's. No email, no
+Telegram for now. Fish Audio and the cloud LLM providers remain in the code but are off and
+unconfigured.
+
+Supplied with the brief (historical):
 
 - **Voice:** Alfred's voice is a Fish Audio cloned voice. Voice model (reference) id
   `098df6366d3845258e2b00ed4844c9cc`, TTS model `s2.1-pro-free`, endpoint
@@ -318,6 +328,10 @@ _(Claude Code updates this section as work progresses.)_
 - [x] M1.5 Voice (Fish Audio) — TTS/STT adapters, sentence-pipelined `audio` events, /v1/tts, /v1/stt
 - [x] Ribbon interface, live voice conversation — pulled forward from M7 at the owner's request
       (2026-11-03): `web/`, served at `/`; `make demo` runs it with no keys; `make e2e` tests it
+- [x] Hands-free + fully local + multi-device (2026-11-03): wake word "Alfred", barge-in,
+      `WS /v1/voice`, Whisper/Piper, Gemma 3 12B default, `/v1/ask` for watches/Shortcuts,
+      installable app (PWA), speaker and terminal clients, `deploy/install.sh` for Ubuntu,
+      `docs/DEVICES.md`
 - [ ] M2 Tools
 - [ ] M3 Memory
 - [ ] M4 Integrations

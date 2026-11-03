@@ -322,6 +322,16 @@ Alfred Pennyworth style; owner's own name not yet given (`OWNER_NAME` empty → 
 LLM: Anthropic when the owner supplies a key; until then **Gemma 3 12B via Ollama** (`local`).
 Gemma has no 13B size; 12B is the closest.
 
+**Owner update (2026-11-03):** fully local and keyless: Gemma 3 12B (Ollama) is the only model;
+hearing (faster-whisper) and voice (Piper) run on the server too. Hands-free wake word "Alfred"
+with barge-in. One Ubuntu server (12 GB RAM, GPU unknown), many clients: phone/tablet (PWA),
+Apple Watch / Wear OS (Shortcut → `POST /v1/ask`), laptop (PWA, CLI), speaker (`clients/speaker.py`).
+Remote access via Tailscale (private HTTPS) or own domain + Caddy. No email, no Telegram.
+Consequences for later milestones: integrations should be keyless where possible (Open-Meteo
+weather, SearXNG/DuckDuckGo search, CalDAV/ICS calendar, Home Assistant with its own local
+token). Gemma 3 has no native tool calling in Ollama, so M2 adds a prompt-based tool protocol
+for the local provider.
+
 Original questions:
 
 | # | Question | My recommendation |

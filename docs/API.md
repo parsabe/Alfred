@@ -13,7 +13,8 @@ export ALFRED=http://127.0.0.1:8000
 export TOKEN=...   # the value of ALFRED_API_TOKEN
 ```
 
-Status of this document: covers **M0, M1 and M1.5 (voice)**. Endpoints still to come are listed at the end.
+Status of this document: covers **M0, M1, M1.5 (voice) and hands-free voice**. Endpoints still to
+come are listed at the end. How each kind of device uses them: `docs/DEVICES.md`.
 
 The ribbon interface itself is served at `GET /` (static, no token needed to load it; it asks for
 the token and sends it on every API call).
@@ -67,8 +68,8 @@ from the price table in `app/core/tokens.py` (local models count as 0).
 
 Error codes so far: `llm_unavailable` (no model configured), `llm_unreachable`,
 `llm_rate_limited`, `llm_auth`, `llm_bad_request`, `llm_upstream`, `llm_refusal`,
-`llm_incomplete`, `turn_timeout`, and for voice `voice_unavailable` (no Fish Audio key; the reply
-continues as text), `voice_auth`, `voice_quota`, `voice_rate_limited`, `voice_timeout`,
+`llm_incomplete`, `turn_timeout`, and for voice `voice_unavailable` (voice is off or its model isn't
+loaded yet; the reply continues as text), `voice_auth`, `voice_quota`, `voice_rate_limited`, `voice_timeout`,
 `voice_unreachable`, `voice_upstream` (synthesis stopped for this turn; text continues).
 
 ---
@@ -88,8 +89,8 @@ curl -s -H "Authorization: Bearer $TOKEN" $ALFRED/health
   "status": "ok",
   "version": "0.1.0",
   "llm": {"configured": true, "provider": "local", "model": "gemma3:12b", "fallback": null},
-  "voice": {"tts": "fish_audio", "stt": "fish_audio"},
-  "integrations": {"llm.anthropic": false, "llm.local": true, "voice.fish_audio": true, "weather": true, "...": false}
+  "voice": {"tts": "piper", "stt": "whisper", "tts_status": "ready", "stt_status": "ready", "wake_word": "Alfred"},
+  "integrations": {"llm.local": true, "voice.stt": true, "voice.tts": true, "weather": true, "...": false}
 }
 ```
 
@@ -185,18 +186,18 @@ event: state   … {"value":"idle"}
 ## `POST /v1/tts`
 
 Speak any text in Alfred's voice. Body `{"text": "..."}` (1–2000 chars). Returns the audio bytes
-(`audio/mpeg` by default). `503` if voice isn't configured, `502` if Fish Audio fails.
+(`audio/wav` from Piper). `503` if voice is off (`TTS_PROVIDER=none`), `502` if synthesis fails.
 
 ```bash
 curl -s $ALFRED/v1/tts -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"text": "Good evening, sir."}' --output alfred.mp3
+  -d '{"text": "Good evening, sir."}' --output alfred.wav
 ```
 
 ## `POST /v1/stt`
 
-Transcribe recorded speech (Fish Audio). Multipart form: `audio` (file, max 10 MB; webm/ogg/mp4/
-wav/mp3) and optional `language` (e.g. `en`, `de`). Returns `{"text": "..."}`. `503` if not
-configured, `413` too large, `422` empty, `502` provider error.
+Transcribe recorded speech (Whisper, on the server). Multipart form: `audio` (file, max 10 MB; webm/ogg/mp4/
+wav/mp3) and optional `language` (e.g. `en`, `de`). Returns `{"text": "..."}`. `503` if
+hearing is off, `413` too large, `422` empty, `502` provider error.
 
 ```bash
 curl -s $ALFRED/v1/stt -H "Authorization: Bearer $TOKEN" -F audio=@question.webm -F language=en
@@ -205,6 +206,83 @@ curl -s $ALFRED/v1/stt -H "Authorization: Bearer $TOKEN" -F audio=@question.webm
 ```json
 {"text": "Is the car ready?"}
 ```
+
+---
+
+## `POST /v1/ask`
+
+One question in, one JSON answer out. No streaming, so it suits **Apple Shortcuts / Siri on
+iPhone and Apple Watch, Android HTTP-shortcut apps, Wear OS, home automation**.
+
+| field | | |
+|---|---|---|
+| `message` | string, 1–4000 | required |
+| `conversation_id` | id \| `"latest"` (default) \| `null` | `latest` continues the conversation used in the last 30 minutes, or starts a new one |
+| `voice` | bool, default `false` | answer in speakable sentences and include Alfred's voice as `audio_b64` |
+
+```bash
+curl -s $ALFRED/v1/ask -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"message": "What should I wear today?"}'
+```
+
+```json
+{"reply": "A light coat, sir; it's 12 degrees with rain after four.",
+ "conversation_id": "1cac…", "error": null, "audio_b64": null, "audio_media_type": null}
+```
+
+If the model fails, `reply` holds a safe explanation and `error` the same message.
+
+---
+
+## `WS /v1/voice`: hands-free conversation
+
+A continuous, two-way voice session. The client streams its microphone; the server listens for
+the wake word, transcribes locally (Whisper), answers with Gemma, speaks (Piper), and handles
+interruptions. The web app and `clients/speaker.py` both use it; any device that can open a
+WebSocket and play WAV audio can.
+
+**Auth**: header `Authorization: Bearer <token>`, or (browsers, which can't set headers) the
+subprotocols `["bearer", "<token>"]`. Bad token → closed with code `4401`; blocked IP → `4403`;
+bad hello → `4400`.
+
+**Client → server**
+
+| message | meaning |
+|---|---|
+| `{"type":"hello","mode":"wake","conversation_id":null,"sample_rate":16000,"barge_in":true}` | first message. `mode`: `wake` (answer “Alfred, …”), `ptt` (only after a `wake` message; nothing is heard before that), `always` (every sentence is for Alfred). `barge_in` optional per-device override. |
+| binary frames | microphone audio: **16 kHz, mono, 16-bit little-endian PCM**, any chunk size (20 ms is typical) |
+| `{"type":"wake"}` | tap-to-talk: listen now without the wake word (interrupts him if he's speaking) |
+| `{"type":"text","message":"…"}` | a typed message |
+| `{"type":"playback","state":"ended"}` | the client finished playing this turn's audio (send after `done` once the audio queue drains) |
+| `{"type":"interrupt"}` / `{"type":"stop"}` / `{"type":"sleep"}` | stop him and listen / stop him and sleep / sleep |
+| `{"type":"mode","mode":"ptt"}` | switch mode |
+
+**Server → client**: JSON events with the usual envelope (`type`, `conversation_id`, `timestamp`,
+`seq`, `data`):
+
+| `type` | `data` | |
+|---|---|---|
+| `ready` | `{"mode","wake_word","follow_up_window_s","barge_in","stt","tts","sample_rate"}` | after hello |
+| `state` | `{"value": "idle"\|"listening"\|"thinking"\|"speaking"}` | `idle` = asleep, waiting for his name; `listening` = in conversation, no name needed |
+| `user_speech` | `{"value": "start"\|"end"}` | someone is talking |
+| `transcript` | `{"text": "Alfred, is the car ready?", "command": "Is the car ready?"}` | a sentence he is acting on (sentences not addressed to him are dropped silently) |
+| `token`, `audio`, `done`, `error` | as in `/v1/chat` | `done.status` is `ack` for his short “Yes, sir?” |
+| `duck` / `unduck` | `{}` | lower / restore his voice: you started talking over him / it was only his echo |
+| `interrupt` | `{"reason": "speech"\|"tap"\|"text"\|"client"}` | stop playing his audio now |
+
+A typical exchange:
+
+```
+→ hello {mode: wake}                      ← ready, state idle
+→ (audio) "The weather is nice."          (ignored: not addressed to him)
+→ (audio) "Alfred, is the car ready?"     ← user_speech start/end, state thinking,
+                                            transcript, token…, audio…, state speaking, done
+→ playback ended                          ← state listening   (follow-up, no name needed)
+→ (audio) "And the umbrella?"             ← transcript, state thinking, … done
+→ playback ended                          ← state listening … 8 s later: state idle
+```
+
+Try it from a terminal: `python clients/speaker.py --server $ALFRED --token $TOKEN`.
 
 ---
 
