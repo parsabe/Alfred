@@ -209,4 +209,5 @@ Everything above uses the same API, documented in [API.md](API.md):
 | Answers are slow | `ALFRED_MODEL=gemma3:4b`, or a GPU; `journalctl -u ollama` shows load times |
 | Install stops: `uv: Permission denied` | update (`git pull`) and run the installer again; fixed on 2026-11-03 |
 | Voice disconnects / replies arrive all at once behind nginx | add the nginx lines from `/opt/alfred/deploy/nginx-<domain>.conf` |
-| Anything else | `sudo journalctl -u alfred -n 100` |
+| Firefox: “The page isn't redirecting properly” | a redirect loop, usually Cloudflare SSL set to “Flexible”: set it to **Full (strict)** |
+| Anything else | `sudo /opt/alfred/deploy/doctor.sh your-domain` checks everything and names the fix |
