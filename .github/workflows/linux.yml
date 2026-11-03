@@ -1,0 +1,28 @@
+name: Linux
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-22.04   # older glibc, so the binary runs on more distributions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y libportaudio2
+      - run: pip install . pytest pyinstaller
+      - run: pytest -q
+      - run: pyinstaller --onefile --name alfred --clean --noconfirm run_alfred.py
+      - run: ./dist/alfred --version
+      - name: Package
+        run: |
+          mkdir -p alfred-linux/packaging
+          cp dist/alfred install.sh alfred-linux/
+          cp packaging/* alfred-linux/packaging/
+          tar czf alfred-linux-x86_64.tar.gz alfred-linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: alfred-linux-x86_64
+          path: alfred-linux-x86_64.tar.gz

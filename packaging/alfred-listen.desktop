@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Alfred (hands-free)
+Comment=Listen for “Alfred, …” with this computer's microphone and speaker
+Exec=alfred listen
+Icon=alfred
+Terminal=true
+Categories=Utility;

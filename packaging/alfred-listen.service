@@ -1,0 +1,12 @@
+# Always-listening Alfred for this user (installed by ./install.sh --service).
+[Unit]
+Description=Alfred hands-free listener
+After=graphical-session.target sound.target network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/alfred listen
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

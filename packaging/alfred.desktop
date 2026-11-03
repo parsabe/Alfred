@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Alfred
+Comment=Your assistant, in an app window
+Exec=alfred open
+Icon=alfred
+Terminal=false
+Categories=Utility;
+Keywords=assistant;voice;butler;
