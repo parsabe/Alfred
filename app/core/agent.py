@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections import defaultdict
 from collections.abc import AsyncIterator, Callable
@@ -61,6 +62,14 @@ class Agent:
             location=s.owner_location,
         )
 
+    def _budget(self) -> int:
+        """Context budget, kept inside the model's window (leaving room for the reply)."""
+        budget = self.settings.context_budget_tokens
+        window = getattr(self.llm, "context_tokens", None)
+        if isinstance(window, int) and window > 0:
+            budget = min(budget, int(window * 0.7))
+        return budget
+
     def enabled_tools(self) -> list[str]:
         return []  # filled by the tool registry in M2
 
@@ -100,6 +109,8 @@ class Agent:
         total_cost = 0.0
         system = self.persona.system_prompt(self.owner(), self.enabled_tools())
         final: StreamEnd | None = None
+        partial: list[str] = []
+        persisted = False
         try:
             async with asyncio.timeout(self.settings.turn_timeout_s):
                 for _step in range(self.settings.max_agent_steps):
@@ -107,7 +118,7 @@ class Agent:
                     window = build_window(
                         system,
                         history,
-                        budget_tokens=self.settings.context_budget_tokens,
+                        budget_tokens=self._budget(),
                         max_turns=self.settings.recent_turns,
                     )
                     request = LLMRequest(
@@ -118,6 +129,7 @@ class Agent:
                     )
                     async for item in self.llm.stream(request):
                         if isinstance(item, TextDelta):
+                            partial.append(item.text)
                             yield ev.token(item.text)
                         else:
                             final = item
@@ -131,8 +143,22 @@ class Agent:
                         final.message,
                         usage={**asdict(final.usage), "cost_usd": step_cost, "model": final.model},
                     )
+                    persisted = True
                     # M2: if final.message.tool_calls → run tools, append results, continue.
                     break
+        except (asyncio.CancelledError, GeneratorExit):
+            # Interrupted (the owner started talking, or the client went away). Keep what was
+            # said so the history stays coherent and Alfred knows he was cut off.
+            if not persisted:
+                said = "".join(partial).strip()
+                note = (
+                    f"{said} … [interrupted by the owner]" if said else "[interrupted by the owner]"
+                )
+                with contextlib.suppress(Exception):
+                    await self.store.append(
+                        conversation_id, ChatMessage(role="assistant", text=note)
+                    )
+            raise
         except TimeoutError:
             yield ev.error("turn_timeout", "That took too long; I've stopped. Please try again.")
             yield self._done("error", total, total_cost, "", "", None)

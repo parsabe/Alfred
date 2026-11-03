@@ -39,6 +39,7 @@ def build_provider(settings: Settings, which: str, model: str) -> LLMProvider | 
             settings.local_llm_base_url,
             model,
             api_key=settings.local_llm_api_key.get_secret_value(),
+            context_tokens=settings.local_llm_context_tokens,
             timeout_s=timeout,
         )
     if which == "fake":
@@ -64,6 +65,8 @@ class FailoverProvider:
         self.model = primary.model
         self.supports_tools = primary.supports_tools
         self.last_used_fallback = False
+        windows = [getattr(p, "context_tokens", None) for p in (primary, fallback) if p]
+        self.context_tokens = min((w for w in windows if w), default=None)
 
     async def aclose(self) -> None:
         await self.primary.aclose()

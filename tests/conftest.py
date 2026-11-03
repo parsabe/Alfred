@@ -26,8 +26,10 @@ def settings(tmp_path: Path) -> Settings:
         owner_timezone="Europe/Berlin",
         owner_location="Berlin",
         llm_provider="fake",
-        fish_audio_api_key="sk-fish-SECRETSECRETSECRETSECRET",
-        fish_audio_voice_id="voice123",
+        stt_provider="none",
+        tts_provider="none",
+        whisper_model="base",
+        home_assistant_token="ha-SECRETSECRETSECRETSECRET",
     )
 
 

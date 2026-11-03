@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     persona_path: Path = ROOT_DIR / "prompts" / "alfred_system.md"
 
     # --- LLM ------------------------------------------------------------------------------
-    llm_provider: ProviderName = "anthropic"
+    llm_provider: ProviderName = "local"
     llm_model: str = ""
     llm_fallback_provider: ProviderName | Literal[""] = ""
     llm_fallback_model: str = ""
@@ -64,12 +64,33 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr = SecretStr("")
     anthropic_refusal_fallback: bool = True
     openai_api_key: SecretStr = SecretStr("")
-    local_llm_base_url: str = ""
+    local_llm_base_url: str = "http://localhost:11434/v1"
     local_llm_api_key: SecretStr = SecretStr("")
+    # Context window the local server gives the model (Ollama: OLLAMA_CONTEXT_LENGTH).
+    local_llm_context_tokens: int = Field(default=8192, ge=1024)
     embeddings_provider: str = ""
     embeddings_model: str = ""
 
-    # --- Voice ----------------------------------------------------------------------------
+    # --- Voice (local by default: Whisper hears, Piper speaks) -------------------------------
+    stt_provider: Literal["whisper", "fish", "none"] = "whisper"
+    whisper_model: str = "base"  # "small" hears better but needs ~0.5 GB more RAM and CPU
+    whisper_device: str = "auto"
+    whisper_compute_type: str = "int8"
+    whisper_beam_size: int = Field(default=3, ge=1, le=10)
+    speech_language: str = ""  # e.g. "en" or "de"; empty = detect automatically
+    tts_provider: Literal["piper", "fish", "none"] = "piper"
+    piper_voice: str = "en_GB-alan-medium"
+    piper_speed: float = Field(default=1.0, gt=0.3, le=3.0)
+    models_dir: Path = Path("./data/models")
+    # hands-free conversation
+    wake_word: str = "Alfred"
+    follow_up_window_s: float = Field(default=8.0, ge=0, le=120)
+    barge_in: bool = True
+    barge_in_ms: int = Field(default=350, ge=100, le=3000)
+    barge_in_hard_ms: int = Field(default=1200, ge=200, le=10000)
+    end_of_speech_ms: int = Field(default=700, ge=200, le=5000)
+    vad_aggressiveness: int = Field(default=2, ge=0, le=3)
+    # optional cloud voice (off unless TTS_PROVIDER/STT_PROVIDER=fish and a key is set)
     fish_audio_api_key: SecretStr = SecretStr("")
     fish_audio_voice_id: str = ""
     fish_audio_model: str = "s2.1-pro-free"
@@ -145,7 +166,7 @@ class Settings(BaseSettings):
         return False
 
     @property
-    def voice_enabled(self) -> bool:
+    def fish_configured(self) -> bool:
         return bool(self.fish_audio_api_key.get_secret_value() and self.fish_audio_voice_id)
 
     def integrations(self) -> dict[str, bool]:
@@ -154,7 +175,8 @@ class Settings(BaseSettings):
             "llm.anthropic": self.provider_configured("anthropic"),
             "llm.openai": self.provider_configured("openai"),
             "llm.local": self.provider_configured("local"),
-            "voice.fish_audio": self.voice_enabled,
+            "voice.stt": self.stt_provider != "none",
+            "voice.tts": self.tts_provider != "none",
             "web_search": bool(
                 self.web_search_provider and self.web_search_api_key.get_secret_value()
             ),

@@ -30,12 +30,20 @@ def test_startup_requires_long_token() -> None:
 
 
 def test_integrations_are_booleans_only() -> None:
-    s = make(fish_audio_api_key="sk-fish-abcdefabcdefabcdef", fish_audio_voice_id="v")
+    s = make(home_assistant_url="http://ha.local", home_assistant_token="ha-abcdefabcdefabcdef")
     flags = s.integrations()
-    assert flags["voice.fish_audio"] is True
+    assert flags["home_assistant"] is True
+    assert flags["llm.local"] is True  # Gemma via Ollama is the default
     assert flags["llm.anthropic"] is False
     assert all(isinstance(v, bool) for v in flags.values())
-    assert "sk-fish" not in repr(s)
+    assert "abcdefabcdef" not in repr(s)
+
+
+def test_defaults_are_fully_local() -> None:
+    s = make()
+    assert s.llm_provider == "local" and s.local_llm_base_url == "http://localhost:11434/v1"
+    assert s.stt_provider == "whisper" and s.tts_provider == "piper"
+    assert s.secret_values() == []  # nothing secret is needed except the access token
 
 
 def test_provider_configured() -> None:

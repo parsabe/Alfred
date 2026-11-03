@@ -83,7 +83,10 @@ class OpenAIProvider:
             "messages": self._messages(request),
             "stream": True,
             "stream_options": {"include_usage": True},
-            self.max_tokens_param: request.max_output_tokens,
+            self.max_tokens_param: min(
+                request.max_output_tokens,
+                int(getattr(self, "context_tokens", 0) * 0.25) or request.max_output_tokens,
+            ),
         }
         if request.tools and self.supports_tools:
             params["tools"] = [

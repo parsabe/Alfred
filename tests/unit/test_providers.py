@@ -289,7 +289,8 @@ async def test_local_ollama_provider_text_and_tool_calls() -> None:
     assert end.message.tool_calls == [ToolCall("call_a", "get_datetime", {"tz": "Europe/Berlin"})]
     assert end.usage.input_tokens == 50 and end.stop_reason == "tool_use"
     sent = rec.requests[0]
-    assert sent["max_tokens"] == 16000 and "max_completion_tokens" not in sent
+    # capped to a quarter of the 8k local window, and named the way Ollama expects
+    assert sent["max_tokens"] == 2048 and "max_completion_tokens" not in sent
     assert [m["role"] for m in sent["messages"]] == [
         "system",
         "user",

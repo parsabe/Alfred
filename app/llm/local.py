@@ -15,7 +15,11 @@ class LocalProvider(OpenAIProvider):
     name = "local"
     max_tokens_param = "max_tokens"
 
-    def __init__(self, base_url: str, model: str = "", **kwargs: object) -> None:
+    def __init__(
+        self, base_url: str, model: str = "", *, context_tokens: int = 8192, **kwargs: object
+    ) -> None:
+        # Local servers have a fixed context window; the agent keeps its context inside it.
+        self.context_tokens = context_tokens
         super().__init__(
             kwargs.pop("api_key", "") or "local",  # type: ignore[arg-type]
             model or DEFAULT_LOCAL_MODEL,
