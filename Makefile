@@ -1,4 +1,4 @@
-.PHONY: install dev run demo test e2e lint fmt typecheck check migrate token docker-up docker-down
+.PHONY: install dev run demo models test e2e lint fmt typecheck check migrate token docker-up docker-down
 
 install:            ## install dependencies (incl. dev tools) and git hooks
 	uv sync
@@ -7,8 +7,11 @@ install:            ## install dependencies (incl. dev tools) and git hooks
 dev:                ## run with auto-reload on http://127.0.0.1:8000
 	uv run uvicorn app.main:create_app --factory --reload --host 127.0.0.1 --port 8000
 
-demo:               ## try the interface with no keys (stand-in brain); ARGS=--tone for server audio
+demo:               ## the interface with a stand-in brain; ARGS=--fake-voice needs no models either
 	uv run python -m scripts.demo $(ARGS)
+
+models:             ## download Whisper and Piper models now (otherwise on first start)
+	uv run python -m scripts.download_models
 
 e2e:                ## drive the interface in headless Chromium (needs Node + Playwright)
 	node tests/e2e/voice_loop.mjs
