@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     fish_audio_api_key: SecretStr = SecretStr("")
     fish_audio_voice_id: str = ""
     fish_audio_model: str = "s2.1-pro-free"
+    fish_audio_format: Literal["mp3", "wav", "opus"] = "mp3"
+    web_ui_enabled: bool = True
 
     # --- Integrations (all optional) ------------------------------------------------------
     web_search_provider: str = ""

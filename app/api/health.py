@@ -27,6 +27,10 @@ async def health(
             "model": getattr(llm, "model", None),
             "fallback": getattr(getattr(llm, "fallback", None), "name", None),
         },
+        voice={
+            "tts": getattr(request.app.state.tts, "name", None),
+            "stt": getattr(request.app.state.stt, "name", None),
+        },
         integrations=settings.integrations(),
     )
     return body
