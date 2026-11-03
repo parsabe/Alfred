@@ -71,6 +71,10 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        # consoles that can't show “ ” · … get a stand-in instead of a crash
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     args = _parser().parse_args(argv)
     cfg = Config.load()
     command = args.command or "listen"
