@@ -38,7 +38,7 @@ const STRANDS = [
 // How each state shapes the ribbon. base: resting height; gain: how much the live level adds;
 // warm/cool: per-side emphasis; drift: how far lobes wander; speed: animation tempo.
 const STATES = {
-  idle:      { base: 0.1,  gain: 0.0, warm: 1.0,  cool: 1.0,  drift: 0.025, speed: 0.6 },
+  idle:      { base: 0.1,  gain: 0.35, warm: 1.0, cool: 1.0,  drift: 0.025, speed: 0.6 },
   listening: { base: 0.16, gain: 0.85, warm: 0.65, cool: 1.15, drift: 0.04, speed: 1.2 },
   thinking:  { base: 0.34, gain: 0.0, warm: 1.15, cool: 0.8,  drift: 0.13, speed: 1.6 },
   speaking:  { base: 0.22, gain: 0.95, warm: 1.0,  cool: 1.0,  drift: 0.05, speed: 1.4 },

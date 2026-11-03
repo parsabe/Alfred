@@ -1,16 +1,16 @@
-// Alfred's live voice interface: tap to talk, Alfred answers aloud, the ribbon shows who is talking.
+// Alfred's live voice interface.
 //
-// idle ──tap──▶ listening ──speech──▶ thinking ──audio──▶ speaking ──done──▶ listening (conversation
-// mode) or idle. Tapping while Alfred thinks or speaks interrupts him and listens again.
+// Hands-free (default): the microphone streams to Alfred's server, which listens for
+// "Alfred, …" and answers aloud. Talk over him to interrupt. Tap (or Space) to talk without
+// saying his name. Everything is decided on the server; this page just carries audio both ways
+// and draws the ribbon.
 
 import { Ribbon } from "./ribbon.js";
-import {
-  AudioOut, BrowserRecognizer, BrowserVoice, Mic, ServerRecognizer, audioContext, hasBrowserSTT,
-} from "./audio.js";
+import { AudioOut, BrowserVoice, Microphone, audioContext } from "./audio.js";
 
 const $ = (id) => document.getElementById(id);
 
-// --- per-browser preferences (best effort: storage may be unavailable) ----------------------
+// --- preferences (per browser; storage may be unavailable) ------------------------------------
 const prefs = {
   get(key, fallback) {
     try { const v = localStorage.getItem(`alfred.${key}`); return v === null ? fallback : JSON.parse(v); }
@@ -22,16 +22,20 @@ const prefs = {
 };
 
 const opts = {
+  server: prefs.get("server", ""),          // empty = the server this page came from
   token: prefs.get("token", ""),
-  continuous: prefs.get("continuous", true),
+  handsFree: prefs.get("handsFree", true),
   voice: prefs.get("voice", true),
   captions: prefs.get("captions", true),
-  stt: prefs.get("stt", "auto"),
-  lang: prefs.get("lang", ""),
+  awake: prefs.get("awake", true),
 };
 let conversationId = prefs.get("conversation", null);
 
-// --- ribbon -----------------------------------------------------------------------------
+function serverBase() {
+  return (opts.server || location.origin).replace(/\/+$/, "");
+}
+
+// --- ribbon ---------------------------------------------------------------------------------
 const ribbon = new Ribbon($("ribbon"), {
   reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
 });
@@ -50,15 +54,17 @@ if (demo) {
   $("hint").classList.add("gone");
 }
 
-// --- state --------------------------------------------------------------------------------
+// --- state ----------------------------------------------------------------------------------
 const out = new AudioOut();
 const browserVoice = new BrowserVoice();
-const mic = new Mic();
-let server = { ok: false, voice: false, stt: false, llm: false };
+let ws = null;
+let mic = null;
 let mode = "idle";
-let turn = null;
-let recognizer = null;
-let spokenInput = true;
+let started = false;
+let reconnectDelay = 1000;
+let server = { tts: null, stt: null, wakeWord: "Alfred" };
+let turn = { text: "", gotAudio: false, done: false };
+const history = []; // recent modes, for debugging and tests
 
 function setStatus(text, isError = false) {
   const el = $("status");
@@ -66,20 +72,27 @@ function setStatus(text, isError = false) {
   el.classList.toggle("error", isError);
 }
 
-const history = []; // recent modes, for debugging and tests
+function idleHint() {
+  if (!started) return "Tap to start Alfred";
+  return opts.handsFree ? `Say “${server.wakeWord}, …”` : "Tap to speak";
+}
 
 function setMode(next) {
   if (next !== mode || !history.length) history.push(next);
   if (history.length > 50) history.shift();
   mode = next;
+  document.body.dataset.mode = next;
   if (demo) return;
   ribbon.setState(next);
   ribbon.levelSource =
-    next === "listening" ? () => mic.level()
+    next === "listening" ? () => mic?.level() ?? 0
     : next === "speaking" ? () => (out.playing ? out.level() : browserVoice.level())
+    : next === "idle" && opts.handsFree ? () => (mic?.level() ?? 0) * 0.5  // he hears you, faintly
     : null;
   if (!ribbon.levelSource) ribbon.setLevel(0);
-  document.body.dataset.mode = next;
+  if (next === "idle") setStatus(idleHint());
+  else if (next === "listening") setStatus("listening");
+  else setStatus("");
 }
 
 function caption(id, text) {
@@ -87,217 +100,146 @@ function caption(id, text) {
   el.textContent = text.length > 420 ? "…" + text.slice(-420) : text;
 }
 
-// --- server ---------------------------------------------------------------------------------
-async function api(path, init = {}) {
-  const res = await fetch(path, {
-    ...init,
-    headers: { ...(init.headers || {}), Authorization: `Bearer ${opts.token}` },
-  });
-  if (res.status === 401) {
-    const err = new Error("Your access token was not accepted.");
-    err.code = 401;
-    throw err;
-  }
-  return res;
+// --- connection ----------------------------------------------------------------------------
+function send(obj) {
+  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
 }
 
-async function checkServer() {
-  const info = $("server-info");
-  if (!opts.token) {
-    server = { ok: false };
-    info.textContent = "Enter the ALFRED_API_TOKEN from the server's .env file.";
-    info.classList.add("bad");
-    return;
-  }
-  try {
-    const health = await (await api("/health")).json();
-    if (!health.llm) throw Object.assign(new Error("Your access token was not accepted."), { code: 401 });
-    server = {
-      ok: true,
-      llm: health.llm.configured,
-      voice: Boolean(health.voice?.tts),
-      stt: Boolean(health.voice?.stt),
-    };
-    const model = health.llm.configured ? `${health.llm.model} (${health.llm.provider})` : "no model configured";
-    const voice = server.voice ? "Alfred's voice" : BrowserVoice.available() ? "browser voice (no Fish Audio key on server)" : "no voice";
-    info.textContent = `Connected · ${model} · ${voice}`;
-    info.classList.toggle("bad", !health.llm.configured);
-  } catch (err) {
-    server = { ok: false };
-    info.textContent = err.code === 401 ? "Token rejected by the server." : "Can't reach Alfred's server.";
-    info.classList.add("bad");
-  }
-}
-
-async function transcribe(blob, lang) {
-  const form = new FormData();
-  form.append("audio", blob, "speech");
-  if (lang) form.append("language", lang.split("-")[0]);
-  const res = await api("/v1/stt", { method: "POST", body: form });
-  if (!res.ok) throw new Error("Alfred couldn't transcribe that.");
-  return (await res.json()).text;
-}
-
-async function* sse(response) {
-  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-  let buf = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) return;
-    buf += value.replace(/\r\n/g, "\n");
-    let i;
-    while ((i = buf.indexOf("\n\n")) >= 0) {
-      const block = buf.slice(0, i);
-      buf = buf.slice(i + 2);
-      const data = block.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5)).join("\n");
-      if (data.trim()) yield JSON.parse(data);
-    }
-  }
-}
-
-// --- listening ---------------------------------------------------------------------------
-async function listen() {
-  stopListening();
-  spokenInput = true;
-  setStatus("");
-  caption("you", "");
-  try {
-    await mic.open();
-  } catch {
-    setMode("idle");
-    setStatus("Microphone access is needed to talk to Alfred.", true);
-    return;
-  }
-  setMode("listening");
-  const useServer =
-    opts.stt === "server" || (opts.stt === "auto" && !hasBrowserSTT);
-  if (useServer && !server.stt) {
-    setMode("idle");
-    setStatus(hasBrowserSTT ? "Server speech recognition isn't configured." : "This browser can't recognise speech. Type with /.", true);
-    return;
-  }
-  const handlers = {
-    lang: opts.lang,
-    onInterim: (text) => caption("you", text),
-    onFinal: (text) => send(text),
-    onEnd: () => {
-      if (mode !== "listening") return;
-      setMode("idle");
-      setStatus("tap to speak");
-    },
-    onError: (message) => { setMode("idle"); setStatus(message, true); },
+function connect() {
+  if (!opts.token) return openSettings("Enter the access token from your server's .env file.");
+  const url = serverBase().replace(/^http/, "ws") + "/v1/voice";
+  const socket = new WebSocket(url, ["bearer", opts.token]);
+  ws = socket;
+  socket.binaryType = "arraybuffer";
+  socket.onopen = () => {
+    reconnectDelay = 1000;
+    socket.send(JSON.stringify({
+      type: "hello",
+      mode: opts.handsFree ? "wake" : "ptt",
+      conversation_id: conversationId,
+      sample_rate: 16000,
+    }));
   };
-  recognizer = useServer
-    ? new ServerRecognizer({ mic, transcribe, ...handlers })
-    : new BrowserRecognizer(handlers);
-  try {
-    recognizer.start();
-  } catch (err) {
-    setMode("idle");
-    setStatus("Couldn't start listening.", true);
+  socket.onmessage = (e) => onEvent(JSON.parse(e.data));
+  socket.onclose = (e) => {
+    if (ws !== socket) return;
+    ws = null;
+    out.stop();
+    if (e.code === 4401) {
+      started = false;
+      setMode("idle");
+      return openSettings("The server didn't accept that token.");
+    }
+    setStatus("reconnecting…", true);
+    setTimeout(() => { if (started && !ws) connect(); }, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 2, 15000);
+  };
+}
+
+function onEvent(ev) {
+  if (ev.conversation_id && ev.conversation_id !== conversationId) {
+    conversationId = ev.conversation_id;
+    prefs.set("conversation", conversationId);
+  }
+  const d = ev.data || {};
+  switch (ev.type) {
+    case "ready":
+      server = { tts: d.tts, stt: d.stt, wakeWord: d.wake_word || "Alfred" };
+      if (!d.stt) setStatus("Speech recognition is off on the server; type with /.", true);
+      break;
+    case "state":
+      setMode(d.value);
+      break;
+    case "transcript":
+      caption("you", d.text);
+      caption("alfred", "");
+      turn = { text: "", gotAudio: false, done: false };
+      break;
+    case "token":
+      turn.text += d.text;
+      caption("alfred", turn.text);
+      break;
+    case "audio":
+      turn.gotAudio = true;
+      if (opts.voice) out.enqueue(d.data_b64);
+      break;
+    case "duck":
+      out.duck(true);
+      break;
+    case "unduck":
+      out.duck(false);
+      break;
+    case "interrupt":
+      out.stop();
+      browserVoice.stop();
+      break;
+    case "error":
+      setStatus(d.message, true);
+      break;
+    case "done":
+      turn.done = true;
+      finishPlayback(turn);
+      break;
   }
 }
 
-function stopListening() {
-  recognizer?.stop();
-  recognizer = null;
-}
-
-// --- a turn -------------------------------------------------------------------------------
-function interrupt() {
-  stopListening();
-  turn?.abort.abort();
-  turn = null;
-  out.stop();
-  browserVoice.stop();
-}
-
-async function send(text) {
-  stopListening();
-  if (!text.trim()) return;
-  if (!opts.token) return openSettings();
-  interrupt();
-  caption("you", text);
-  caption("alfred", "");
-  setStatus("");
-  setMode("thinking");
-
-  const current = (turn = { abort: new AbortController(), text: "", gotAudio: false, fallbackVoice: false });
-  const wantVoice = opts.voice;
-  try {
-    const res = await api("/v1/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: text,
-        conversation_id: conversationId,
-        output_mode: wantVoice ? "voice" : "text",
-      }),
-      signal: current.abort.signal,
-    });
-    if (res.status === 404 && conversationId) {
-      conversationId = null;            // conversation was deleted on the server: start afresh
-      prefs.set("conversation", null);
-      turn = null;
-      return send(text);
-    }
-    if (!res.ok) throw new Error(`Alfred's server answered ${res.status}.`);
-
-    for await (const ev of sse(res)) {
-      if (turn !== current) return;
-      if (ev.conversation_id && ev.conversation_id !== conversationId) {
-        conversationId = ev.conversation_id;
-        prefs.set("conversation", conversationId);
-      }
-      switch (ev.type) {
-        case "token":
-          current.text += ev.data.text;
-          caption("alfred", current.text);
-          break;
-        case "audio":
-          current.gotAudio = true;
-          if (mode !== "speaking") setMode("speaking");
-          out.enqueue(ev.data.data_b64);
-          break;
-        case "error":
-          if (String(ev.data.code).startsWith("voice")) current.fallbackVoice = true;
-          else setStatus(ev.data.message, true);
-          break;
-        case "state":
-          if (ev.data.value === "thinking" && mode !== "speaking") setMode("thinking");
-          break;
-      }
-    }
-
-    if (turn !== current) return;
-    if (wantVoice && current.gotAudio) {
-      await out.drained();
-    } else if (wantVoice && current.text && BrowserVoice.available()) {
-      setMode("speaking");
-      await browserVoice.speak(current.text, opts.lang);
-    }
-    if (turn !== current) return;
-    turn = null;
-    if (opts.continuous && spokenInput && current.text) listen();
-    else setMode("idle");
-  } catch (err) {
-    if (err.name === "AbortError" || turn !== current) return;
-    turn = null;
-    setMode("idle");
-    setStatus(err.message || "Something went wrong.", true);
-    if (err.code === 401) openSettings();
+async function finishPlayback(current) {
+  if (current.gotAudio && opts.voice) {
+    await out.drained();
+  } else if (!current.gotAudio && opts.voice && current.text && !server.tts) {
+    await browserVoice.speak(current.text); // no voice on the server: the browser stands in
   }
+  if (current === turn) send({ type: "playback", state: "ended" });
 }
 
-// --- input --------------------------------------------------------------------------------
-function onTap() {
-  if (demo) return;
+// --- starting ------------------------------------------------------------------------------
+let wakeLock = null;
+async function keepAwake() {
+  if (!opts.awake || !("wakeLock" in navigator) || document.visibilityState !== "visible") return;
+  try { wakeLock = await navigator.wakeLock.request("screen"); } catch {}
+}
+document.addEventListener("visibilitychange", () => { if (started) keepAwake(); });
+
+async function start() {
+  if (started) return;
+  if (!opts.token) return openSettings("Enter the access token from your server's .env file.");
   audioContext(); // browsers only allow audio after a user gesture
   $("hint").classList.add("gone");
-  if (!opts.token) return openSettings();
-  if (mode === "listening") { stopListening(); setMode("idle"); return; }
-  if (mode === "thinking" || mode === "speaking") interrupt();
-  listen();
+  mic = new Microphone((frame) => { if (ws?.readyState === WebSocket.OPEN) ws.send(frame); });
+  try {
+    await mic.start();
+  } catch (err) {
+    console.warn(err);
+    mic = null;
+    setStatus(location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1"
+      ? "Microphone access is needed to talk to Alfred."
+      : "Microphones only work over https:// (see docs/DEVICES.md). You can still type with /.", true);
+  }
+  started = true;
+  keepAwake();
+  connect();
+  setMode("idle");
+}
+
+function stop() {
+  started = false;
+  ws?.close();
+  ws = null;
+  mic?.stop();
+  mic = null;
+  out.stop();
+  browserVoice.stop();
+  wakeLock?.release?.();
+  setMode("idle");
+}
+
+// --- input ---------------------------------------------------------------------------------
+function onTap() {
+  if (demo) return;
+  if (!started) return start();
+  audioContext();
+  send({ type: "wake" }); // talk without the name; also interrupts him if he's speaking
+  if (mode === "speaking") { out.stop(); browserVoice.stop(); }
 }
 
 $("stage").addEventListener("click", onTap);
@@ -308,7 +250,7 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   if (e.code === "Space") { e.preventDefault(); onTap(); }
-  else if (e.key === "Escape") { interrupt(); setMode("idle"); }
+  else if (e.key === "Escape") { send({ type: "stop" }); out.stop(); browserVoice.stop(); }
   else if (e.key === "/") { e.preventDefault(); toggleTyping(true); }
   else if (e.key === ",") openSettings();
 });
@@ -320,67 +262,99 @@ function toggleTyping(show) {
 }
 
 $("keyboard-btn").addEventListener("click", () => toggleTyping());
-$("type-form").addEventListener("submit", (e) => {
+$("type-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const input = $("type-input");
   const text = input.value.trim();
   if (!text) return;
   input.value = "";
-  audioContext();
-  $("hint").classList.add("gone");
-  spokenInput = false;
-  send(text);
+  if (!started) await start();
+  send({ type: "text", message: text });
 });
 
 // --- settings -------------------------------------------------------------------------------
 const dialog = $("settings");
 
-function openSettings() {
+function openSettings(message) {
+  $("server").value = opts.server;
+  $("server").placeholder = location.origin;
   $("token").value = opts.token;
-  $("opt-continuous").checked = opts.continuous;
+  $("opt-handsfree").checked = opts.handsFree;
   $("opt-voice").checked = opts.voice;
   $("opt-captions").checked = opts.captions;
-  $("opt-stt").value = opts.stt;
-  $("opt-lang").value = opts.lang;
+  $("opt-awake").checked = opts.awake;
+  const info = $("server-info");
+  info.textContent = message || "";
+  info.classList.toggle("bad", Boolean(message));
   if (!dialog.open) dialog.showModal();
-  checkServer();
+  if (!message) checkServer();
 }
 
-$("settings-btn").addEventListener("click", openSettings);
-$("token").addEventListener("change", () => {
+async function checkServer() {
+  const info = $("server-info");
+  if (!opts.token) return;
+  try {
+    const res = await fetch(`${serverBase()}/health`, { headers: { Authorization: `Bearer ${opts.token}` } });
+    const health = await res.json();
+    if (!health.llm) throw Object.assign(new Error(), { code: 401 });
+    const model = health.llm.configured ? health.llm.model : "no model configured";
+    const hear = health.voice?.stt ? `hearing: ${health.voice.stt} (${health.voice.stt_status})` : "hearing: off";
+    const speak = health.voice?.tts ? `voice: ${health.voice.tts} (${health.voice.tts_status})` : "voice: browser";
+    info.textContent = `Connected · ${model} · ${hear} · ${speak}`;
+    info.classList.toggle("bad", !health.llm.configured);
+  } catch (err) {
+    info.textContent = err.code === 401 ? "Token rejected by the server." : "Can't reach Alfred's server.";
+    info.classList.add("bad");
+  }
+}
+
+$("settings-btn").addEventListener("click", () => openSettings());
+
+function applySettings() {
+  const before = { server: opts.server, token: opts.token, handsFree: opts.handsFree };
+  opts.server = $("server").value.trim();
   opts.token = $("token").value.trim();
-  prefs.set("token", opts.token);
-  checkServer();
-});
-for (const [id, key] of [["opt-continuous", "continuous"], ["opt-voice", "voice"], ["opt-captions", "captions"]]) {
-  $(id).addEventListener("change", () => {
-    opts[key] = $(id).checked;
-    prefs.set(key, opts[key]);
-    document.body.classList.toggle("no-captions", !opts.captions);
-  });
+  opts.handsFree = $("opt-handsfree").checked;
+  opts.voice = $("opt-voice").checked;
+  opts.captions = $("opt-captions").checked;
+  opts.awake = $("opt-awake").checked;
+  for (const key of Object.keys(opts)) prefs.set(key, opts[key]);
+  out.muted = !opts.voice;
+  document.body.classList.toggle("no-captions", !opts.captions);
+  if (before.handsFree !== opts.handsFree) send({ type: "mode", mode: opts.handsFree ? "wake" : "ptt" });
+  if (started && (before.server !== opts.server || before.token !== opts.token)) {
+    const s = ws; ws = null; s?.close(); connect();
+  }
+  if (mode === "idle") setStatus(idleHint());
 }
-for (const [id, key] of [["opt-stt", "stt"], ["opt-lang", "lang"]]) {
-  $(id).addEventListener("change", () => { opts[key] = $(id).value; prefs.set(key, opts[key]); });
+
+for (const id of ["server", "token", "opt-handsfree", "opt-voice", "opt-captions", "opt-awake"]) {
+  $(id).addEventListener("change", () => { applySettings(); if (id === "token" || id === "server") checkServer(); });
 }
+dialog.addEventListener("close", applySettings);
+
 $("new-conversation").addEventListener("click", () => {
-  interrupt();
+  send({ type: "stop" });
   conversationId = null;
   prefs.set("conversation", null);
   caption("you", "");
   caption("alfred", "");
-  setMode("idle");
+  if (started) { const s = ws; ws = null; s?.close(); connect(); }
   dialog.close();
 });
-dialog.addEventListener("close", () => {
-  opts.token = $("token").value.trim();
-  prefs.set("token", opts.token);
-});
+$("stop-listening").addEventListener("click", () => { stop(); dialog.close(); });
 
-// --- start ------------------------------------------------------------------------------------
+// --- boot -----------------------------------------------------------------------------------
 document.body.classList.toggle("no-captions", !opts.captions);
+out.muted = !opts.voice;
 setMode("idle");
-if (!demo) {
-  if (!opts.token) $("hint").textContent = "Tap to set up";
-  else checkServer();
-}
-window.alfred = { get mode() { return mode; }, get conversationId() { return conversationId; }, history, out };
+$("hint").textContent = opts.token ? "Tap to start Alfred" : "Tap to set up";
+if ("serviceWorker" in navigator && !demo) navigator.serviceWorker.register("sw.js").catch(() => {});
+
+window.alfred = {
+  get mode() { return mode; },
+  get conversationId() { return conversationId; },
+  get connected() { return ws?.readyState === WebSocket.OPEN; },
+  history,
+  out,
+};

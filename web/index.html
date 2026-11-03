@@ -6,10 +6,16 @@
   <meta name="theme-color" content="#000000">
   <title>Alfred</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='black'/%3E%3Cpath d='M6 33 Q32 6 58 33' stroke='%23ff7a1a' stroke-width='5' fill='none'/%3E%3Cpath d='M6 33 Q32 56 58 33' stroke='%23206cff' stroke-width='5' fill='none'/%3E%3C/svg%3E">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Alfred">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main id="stage" aria-label="Alfred. Tap or press space to speak.">
+  <main id="stage" aria-label="Alfred. Say Alfred, or tap or press space to speak.">
     <canvas id="ribbon" aria-hidden="true"></canvas>
 
     <div id="captions" aria-live="polite">
@@ -42,40 +48,29 @@
       <h2 id="settings-title">Alfred</h2>
 
       <label class="field">
+        <span>Server</span>
+        <input id="server" type="url" autocomplete="off" spellcheck="false" inputmode="url">
+        <small>Leave empty to use the server this page came from.</small>
+      </label>
+      <label class="field">
         <span>Access token</span>
         <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="ALFRED_API_TOKEN">
-        <small>Stays in this browser only.</small>
+        <small>Stays on this device only.</small>
       </label>
 
-      <label class="toggle"><input id="opt-continuous" type="checkbox" checked>
-        <span>Conversation mode <small>listen again after Alfred answers</small></span></label>
+      <label class="toggle"><input id="opt-handsfree" type="checkbox" checked>
+        <span>Hands-free <small>answer whenever someone says “Alfred, …”</small></span></label>
       <label class="toggle"><input id="opt-voice" type="checkbox" checked>
         <span>Alfred speaks</span></label>
       <label class="toggle"><input id="opt-captions" type="checkbox" checked>
         <span>Captions</span></label>
-
-      <label class="field">
-        <span>Speech recognition</span>
-        <select id="opt-stt">
-          <option value="auto">Automatic</option>
-          <option value="browser">This browser</option>
-          <option value="server">Alfred's server (Fish Audio)</option>
-        </select>
-      </label>
-      <label class="field">
-        <span>Language you speak</span>
-        <select id="opt-lang">
-          <option value="">Browser default</option>
-          <option value="en-GB">English (UK)</option>
-          <option value="en-US">English (US)</option>
-          <option value="de-DE">Deutsch</option>
-          <option value="fa-IR">فارسی</option>
-        </select>
-      </label>
+      <label class="toggle"><input id="opt-awake" type="checkbox" checked>
+        <span>Keep the screen on <small>so Alfred keeps listening on phones and tablets</small></span></label>
 
       <p id="server-info" class="server-info"></p>
 
       <div class="actions">
+        <button type="button" id="stop-listening" class="quiet">Stop listening</button>
         <button type="button" id="new-conversation" class="quiet">New conversation</button>
         <button value="close" class="primary">Done</button>
       </div>
