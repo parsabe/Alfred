@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -11,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
-from app.api import chat, conversations, health, voice
+from app.api import ask, chat, conversations, health, voice, voice_ws
 from app.config import ROOT_DIR, Settings, get_settings
 from app.core import tokens
 from app.core.agent import Agent
@@ -28,20 +29,41 @@ WEB_DIR = ROOT_DIR / "web"
 
 
 def build_voice(settings: Settings) -> tuple[TTSProvider | None, STTProvider | None]:
-    if not settings.voice_enabled:
-        return None, None
-    from app.voice.fish import FishSTT, FishTTS
+    """Local Whisper + Piper by default; Fish Audio only if explicitly chosen and keyed."""
+    tts: TTSProvider | None = None
+    stt: STTProvider | None = None
+    if settings.tts_provider == "piper":
+        from app.voice.local import PiperTTS
 
-    key = settings.fish_audio_api_key.get_secret_value()
-    return (
-        FishTTS(
-            key,
+        tts = PiperTTS(
+            settings.piper_voice, models_dir=settings.models_dir, speed=settings.piper_speed
+        )
+    elif settings.tts_provider == "fish" and settings.fish_configured:
+        from app.voice.fish import FishTTS
+
+        tts = FishTTS(
+            settings.fish_audio_api_key.get_secret_value(),
             settings.fish_audio_voice_id,
             settings.fish_audio_model,
             audio_format=settings.fish_audio_format,
-        ),
-        FishSTT(key),
-    )
+        )
+    if settings.stt_provider == "whisper":
+        from app.voice.local import WhisperSTT
+
+        stt = WhisperSTT(
+            settings.whisper_model,
+            models_dir=settings.models_dir,
+            device=settings.whisper_device,
+            compute_type=settings.whisper_compute_type,
+            beam_size=settings.whisper_beam_size,
+            language=settings.speech_language,
+            hint=settings.wake_word,
+        )
+    elif settings.stt_provider == "fish" and settings.fish_audio_api_key.get_secret_value():
+        from app.voice.fish import FishSTT
+
+        stt = FishSTT(settings.fish_audio_api_key.get_secret_value())
+    return tts, stt
 
 
 log = logging.getLogger("alfred")
@@ -80,7 +102,17 @@ def create_app(
         built_tts, built_stt = build_voice(settings)
         app.state.tts = tts if tts is not None else built_tts
         app.state.stt = stt if stt is not None else built_stt
-        log.info("voice: %s", "on" if app.state.tts is not None else "off (no FISH_AUDIO_API_KEY)")
+        log.info(
+            "voice: hearing=%s speaking=%s",
+            getattr(app.state.stt, "name", "off"),
+            getattr(app.state.tts, "name", "off"),
+        )
+        # download/load speech models in the background; the API is usable meanwhile
+        warmups = [
+            asyncio.create_task(p.warmup())
+            for p in (app.state.tts, app.state.stt)
+            if p is not None and hasattr(p, "warmup")
+        ]
 
         app.state.settings = settings
         app.state.engine = engine
@@ -90,6 +122,8 @@ def create_app(
         try:
             yield
         finally:
+            for task in warmups:
+                task.cancel()
             for closable in (provider, app.state.tts, app.state.stt):
                 if closable is not None:
                     await closable.aclose()
@@ -113,6 +147,8 @@ def create_app(
     app.include_router(chat.router)
     app.include_router(conversations.router)
     app.include_router(voice.router)
+    app.include_router(ask.router)
+    app.include_router(voice_ws.router)
     if settings.web_ui_enabled and WEB_DIR.is_dir():
         # The ribbon interface. Static and public; every API call it makes needs the token.
         app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")

@@ -30,6 +30,9 @@ async def health(
         voice={
             "tts": getattr(request.app.state.tts, "name", None),
             "stt": getattr(request.app.state.stt, "name", None),
+            "tts_status": getattr(request.app.state.tts, "status", None),
+            "stt_status": getattr(request.app.state.stt, "status", None),
+            "wake_word": settings.wake_word,
         },
         integrations=settings.integrations(),
     )

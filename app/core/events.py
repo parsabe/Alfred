@@ -16,6 +16,12 @@ EventType = Literal[
     "proactive",
     "state",
     "audio",
+    "ready",
+    "transcript",
+    "user_speech",
+    "duck",
+    "unduck",
+    "interrupt",
     "error",
     "done",
 ]

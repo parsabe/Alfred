@@ -71,10 +71,10 @@ def test_voice_failure_falls_back_to_text(settings: Settings, fake_llm: FakeProv
 
 
 def test_voice_mode_without_voice_configured(settings: Settings, fake_llm: FakeProvider) -> None:
-    settings.fish_audio_api_key = ""  # type: ignore[assignment]
     with TestClient(create_app(settings, llm=fake_llm)) as c:
         c.headers["Authorization"] = f"Bearer {TOKEN}"
-        assert c.get("/health").json()["voice"] == {"tts": None, "stt": None}
+        voice = c.get("/health").json()["voice"]
+        assert voice["tts"] is None and voice["stt"] is None
         events = chat(c, "Hello", output_mode="voice")
         assert events[0]["type"] == "error" and events[0]["data"]["code"] == "voice_unavailable"
         assert c.post("/v1/tts", json={"text": "hi"}).status_code == 503

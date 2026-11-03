@@ -20,7 +20,8 @@ def test_health_public_is_minimal(client: TestClient) -> None:
 
 def test_health_authenticated_lists_integrations_without_secrets(client: TestClient) -> None:
     body = client.get("/health").json()
-    assert body["integrations"]["voice.fish_audio"] is True
+    assert body["integrations"]["voice.stt"] is False  # tests run without speech models
+    assert body["voice"]["wake_word"] == "Alfred"
     assert body["llm"]["provider"] == "fake"
     assert "SECRET" not in str(body)
 
