@@ -19,7 +19,7 @@ set -euo pipefail
 
 MODEL="${ALFRED_MODEL:-gemma3:12b}"
 DIR="${ALFRED_DIR:-/opt/alfred}"
-PORT="${ALFRED_PORT:-8000}"
+PORT="${ALFRED_PORT:-}"
 LISTEN="127.0.0.1"
 TAILSCALE=0
 DOMAIN=""
@@ -112,9 +112,24 @@ else
   TOKEN=$(grep '^ALFRED_API_TOKEN=' "$DIR/.env" | cut -d= -f2-)
   NEW_TOKEN=0
 fi
-grep -q '^ALFRED_LISTEN=' "$DIR/.env" && sed -i "s|^ALFRED_LISTEN=.*|ALFRED_LISTEN=$LISTEN|" "$DIR/.env" \
-  || echo "ALFRED_LISTEN=$LISTEN" >> "$DIR/.env"
-grep -q '^ALFRED_PORT=' "$DIR/.env" || echo "ALFRED_PORT=$PORT" >> "$DIR/.env"
+set_env() {  # set KEY=VALUE in .env, adding it if missing
+  if grep -q "^$1=" "$DIR/.env"; then sed -i "s|^$1=.*|$1=$2|" "$DIR/.env"; else echo "$1=$2" >> "$DIR/.env"; fi
+}
+set_env ALFRED_LISTEN "$LISTEN"
+
+# Pick the port: keep the one Alfred already uses, else 8000, else the next free one.
+[ -n "$PORT" ] || PORT=$(grep -E '^ALFRED_PORT=[0-9]+$' "$DIR/.env" | cut -d= -f2)
+[ -n "$PORT" ] || PORT=8000
+systemctl stop alfred 2>/dev/null || true   # free our own port before checking
+port_user() { ss -ltnpH "sport = :$1" 2>/dev/null | sed -nE 's/.*users:\(\("([^"]+)".*/\1/p' | head -1; }
+if [ -n "$(ss -ltnH "sport = :$PORT" 2>/dev/null)" ]; then
+  echo "Port $PORT is already used by: $(port_user "$PORT" || echo 'another program')"
+  for candidate in $(seq $((PORT + 1)) $((PORT + 100))); do
+    if [ -z "$(ss -ltnH "sport = :$candidate" 2>/dev/null)" ]; then PORT=$candidate; break; fi
+  done
+  echo "Alfred will use port $PORT instead."
+fi
+set_env ALFRED_PORT "$PORT"
 chown alfred:alfred "$DIR/.env"
 chmod 600 "$DIR/.env"
 
@@ -124,12 +139,41 @@ sudo -u alfred -H bash -c "cd '$DIR' && .venv/bin/python -m scripts.download_mod
 
 say "Starting the Alfred service"
 sed -e "s|/opt/alfred|$DIR|g" "$DIR/deploy/alfred.service" > /etc/systemd/system/alfred.service
+rm -f /etc/systemd/system/alfred.service.d/no-sandbox.conf
 systemctl daemon-reload
-systemctl enable --now alfred >/dev/null
-systemctl restart alfred
-for _ in $(seq 1 60); do curl -fs "http://127.0.0.1:$PORT/health" >/dev/null && break; sleep 1; done
-curl -fs "http://127.0.0.1:$PORT/health" >/dev/null && echo "Alfred is running." \
-  || { echo "Alfred did not start; see: journalctl -u alfred -n 50" >&2; exit 1; }
+systemctl enable alfred >/dev/null 2>&1
+
+wait_healthy() {
+  for _ in $(seq 1 60); do
+    curl -fs "http://127.0.0.1:$PORT/health" >/dev/null && return 0
+    systemctl is-failed --quiet alfred && return 1
+    sleep 1
+  done
+  return 1
+}
+systemctl restart alfred || true
+if ! wait_healthy; then
+  # Some VPS types (OpenVZ/LXC containers) can't create the service's private sandbox
+  # (status 226/NAMESPACE). Retry without it.
+  if journalctl -u alfred -n 30 --no-pager 2>/dev/null | grep -qiE "226/NAMESPACE|namespac|Failed to set up mount"; then
+    echo "This server can't sandbox services; starting Alfred without the sandbox."
+    mkdir -p /etc/systemd/system/alfred.service.d
+    printf '[Service]\nProtectSystem=no\nProtectHome=no\nPrivateTmp=no\nReadWritePaths=\n' \
+      > /etc/systemd/system/alfred.service.d/no-sandbox.conf
+    systemctl daemon-reload
+    systemctl reset-failed alfred 2>/dev/null || true
+    systemctl restart alfred || true
+  fi
+fi
+if wait_healthy; then
+  echo "Alfred is running on 127.0.0.1:$PORT."
+else
+  echo "Alfred did not start. Here is why (last log lines):" >&2
+  journalctl -u alfred -n 40 --no-pager >&2 || true
+  echo >&2
+  echo "Run  sudo $DIR/deploy/doctor.sh ${DOMAIN:-}  and send its output if this isn't clear." >&2
+  exit 1
+fi
 
 URL="http://127.0.0.1:$PORT"
 if [ -n "$DOMAIN" ]; then
