@@ -6,6 +6,8 @@
 #   sudo ./deploy/install.sh                 # server only, reachable on this machine
 #   sudo ./deploy/install.sh --tailscale     # + private https:// address for phone/watch/laptop
 #   sudo ./deploy/install.sh --lan           # + listen on the local network (http, typing only)
+#   sudo ./deploy/install.sh --domain alfred.example.com
+#                                            # behind your own nginx / aaPanel site with HTTPS
 #
 # Options (environment variables):
 #   ALFRED_MODEL=gemma3:12b    the Ollama model (gemma3:4b is ~3x faster on a CPU-only server)
@@ -20,13 +22,17 @@ DIR="${ALFRED_DIR:-/opt/alfred}"
 PORT="${ALFRED_PORT:-8000}"
 LISTEN="127.0.0.1"
 TAILSCALE=0
-for arg in "$@"; do
-  case "$arg" in
+DOMAIN=""
+while [ $# -gt 0 ]; do
+  case "$1" in
     --tailscale) TAILSCALE=1 ;;
     --lan) LISTEN="0.0.0.0" ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
-    *) echo "unknown option: $arg" >&2; exit 2 ;;
+    --domain) DOMAIN="${2:-}"; shift; [ -n "$DOMAIN" ] || { echo "--domain needs a name" >&2; exit 2; } ;;
+    --domain=*) DOMAIN="${1#--domain=}" ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
+  shift
 done
 
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
@@ -82,10 +88,17 @@ mkdir -p "$DIR"
 rsync -a --delete --exclude .git --exclude web/.git --exclude .venv --exclude data --exclude .env \
   --exclude '__pycache__' "$SRC"/ "$DIR"/
 mkdir -p "$DIR/data"
-if ! command -v uv >/dev/null 2>&1 && [ ! -x /usr/local/bin/uv ]; then
-  curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+# uv must live somewhere the `alfred` service user can run it: a copy in root's home
+# (/root/.local/bin) is not readable by other users.
+UV=/usr/local/bin/uv
+if [ ! -x "$UV" ]; then
+  if command -v uv >/dev/null 2>&1; then
+    install -m 755 "$(command -v uv)" "$UV"
+  else
+    curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh
+  fi
 fi
-UV="$(command -v uv || echo /usr/local/bin/uv)"
+sudo -u alfred -H "$UV" --version >/dev/null || { echo "The alfred user can't run $UV" >&2; exit 1; }
 chown -R alfred:alfred "$DIR"
 sudo -u alfred -H bash -c "cd '$DIR' && '$UV' sync --frozen --no-dev --python 3.12"
 
@@ -119,6 +132,46 @@ curl -fs "http://127.0.0.1:$PORT/health" >/dev/null && echo "Alfred is running."
   || { echo "Alfred did not start; see: journalctl -u alfred -n 50" >&2; exit 1; }
 
 URL="http://127.0.0.1:$PORT"
+if [ -n "$DOMAIN" ]; then
+  say "Reverse proxy for https://$DOMAIN"
+  NGINX_SNIPPET="$DIR/deploy/nginx-$DOMAIN.conf"
+  cat > "$NGINX_SNIPPET" <<NGINX
+# Alfred behind nginx at https://$DOMAIN  (paste into the site's server { } block)
+location / {
+    proxy_pass http://127.0.0.1:$PORT;
+    proxy_http_version 1.1;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    # hands-free voice is a WebSocket
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection "upgrade";
+    # stream Alfred's words as he says them, and keep the voice connection open
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    client_max_body_size 12m;
+}
+NGINX
+  URL="https://$DOMAIN"
+  if [ -d /www/server/panel ]; then
+    cat <<PANEL
+  aaPanel / BaoTa detected. In the panel:
+    1. Website → $DOMAIN → SSL → Let's Encrypt → Apply, then turn on "Force HTTPS".
+    2. Website → $DOMAIN → Reverse proxy → Add: target URL http://127.0.0.1:$PORT,
+       send domain \$host. Save.
+    3. Open that reverse proxy's configuration file and make sure it contains the lines in
+       $NGINX_SNIPPET (especially Upgrade/Connection, proxy_buffering off and the 3600s
+       timeouts), then save. The panel reloads nginx.
+PANEL
+  else
+    echo "  Add the contents of $NGINX_SNIPPET to the nginx server block for $DOMAIN"
+    echo "  (with HTTPS, e.g. certbot --nginx -d $DOMAIN), then: sudo nginx -t && sudo systemctl reload nginx"
+  fi
+  echo "  Make sure $DOMAIN's DNS points to this server."
+fi
 if [ "$TAILSCALE" -eq 1 ]; then
   say "Setting up Tailscale (private HTTPS for your devices)"
   command -v tailscale >/dev/null 2>&1 || curl -fsSL https://tailscale.com/install.sh | sh
