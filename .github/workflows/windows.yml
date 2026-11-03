@@ -1,0 +1,30 @@
+name: Windows
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install . pytest pyinstaller
+      - run: pytest -q
+      - run: pyinstaller --onefile --name Alfred --icon packaging\alfred.ico --clean --noconfirm run_alfred.py
+      - run: .\dist\Alfred.exe --version
+      - name: Installer (Inno Setup)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Qp installer\alfred.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: alfred-windows
+          path: |
+            dist/Alfred.exe
+            dist/Alfred-Setup.exe
