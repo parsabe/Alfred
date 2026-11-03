@@ -1,61 +1,24 @@
-# Alfred
+# Alfred · docs
 
-A discreet, highly capable personal assistant that lives on **your own server** and that you
-simply talk to. Say **“Alfred, …”** from your phone, watch, laptop or a speaker in the room; he
-answers aloud. Talk over him and he stops to listen.
+Documentation for [parsabe/Alfred](https://github.com/parsabe/Alfred).
 
-Everything runs on your machine: **Gemma 3 12B** thinks (via Ollama), **Whisper** hears,
-**Piper** speaks. No API keys, no cloud services, nothing you say leaves your server.
-
-![The ribbon](docs/interface-reference.png)
-
-## Install (Ubuntu server)
-
-```bash
-git clone https://github.com/parsabe/Alfred.git && cd Alfred
-sudo ./deploy/install.sh --tailscale
-```
-
-It installs Ollama + Gemma 3 12B, Alfred as a service that starts on boot, his hearing and voice,
-and Tailscale for a private `https://` address. At the end it prints **your Alfred address** and
-**access token**.
-
-Then connect your devices. Phone app, Apple Watch, laptop and Raspberry Pi speaker are covered
-step by step in **[docs/DEVICES.md](docs/DEVICES.md)**.
-
-## Talking to him
-
-| | |
+| Document | |
 |---|---|
-| “Alfred, what's on today?” | he answers |
-| “Alfred?” | “Yes, sir?”, then he listens for the next sentence |
-| a follow-up within 8 s | no need to say his name again |
-| talk while he speaks | he lowers his voice, then stops and listens |
-| tap / Space | talk without saying his name |
-| `/` | type instead |
-| `,` | settings: server, token, hands-free, voice, captions, keep screen on |
+| [DEVICES.md](DEVICES.md) | **start here**: install the server, reach it securely, use Alfred on Android, iPhone, Apple Watch, Wear OS, Windows, Linux, Mac and a Raspberry Pi speaker |
+| [API.md](API.md) | the HTTP / SSE / WebSocket API with curl examples (`/v1/chat`, `/v1/ask`, `WS /v1/voice`, `/v1/tts`, `/v1/stt`, conversations, health) |
+| [PLAN.md](PLAN.md) | architecture and design decisions |
+| [BRIEF.md](BRIEF.md) | the original requirements, owner decisions, and **milestone status** |
+| [MILESTONES.md](MILESTONES.md) | what each milestone built, how it was tested, known limits |
 
-His personality is in `prompts/alfred_system.md`; edits apply on the next sentence.
-All settings are in `.env` (see `.env.example`; on the server: `/opt/alfred/.env`).
+![The ribbon](interface-reference.png)
 
-## Documentation
+## Branches
 
-- [docs/DEVICES.md](docs/DEVICES.md): using Alfred on phone, watch, laptop, speaker; remote access
-- [docs/API.md](docs/API.md): the HTTP/WebSocket API with examples, for your own integrations
-- [docs/PLAN.md](docs/PLAN.md): design; [docs/BRIEF.md](docs/BRIEF.md): requirements and progress
-
-## Development
-
-Needs Python 3.12+ and [uv](https://docs.astral.sh/uv/); for a real brain, Ollama with
-`ollama pull gemma3:12b`.
-
-```bash
-make install     # dependencies + git hooks
-cp .env.example .env && make token   # put the token into ALFRED_API_TOKEN
-make models      # download Whisper + Piper once
-make dev         # http://127.0.0.1:8000
-make demo        # the interface with a stand-in brain (no Ollama needed)
-make test        # unit + integration tests
-make e2e         # hands-free flow in headless Chromium (Node + Playwright)
-make check       # lint + types + tests (what CI runs)
-```
+| Branch | |
+|---|---|
+| [`kernel`](https://github.com/parsabe/Alfred/tree/kernel) | the server: Gemma 3 12B, Whisper, Piper, API, Ubuntu installer |
+| [`web`](https://github.com/parsabe/Alfred/tree/web) | the ribbon interface (installable web app) |
+| [`android`](https://github.com/parsabe/Alfred/tree/android) | the Android app |
+| [`linux`](https://github.com/parsabe/Alfred/tree/linux) | the Linux desktop client |
+| [`windows`](https://github.com/parsabe/Alfred/tree/windows) | the Windows desktop client and installer |
+| [`docs`](https://github.com/parsabe/Alfred/tree/docs) | this documentation |

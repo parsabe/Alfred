@@ -14,7 +14,7 @@ export TOKEN=...   # the value of ALFRED_API_TOKEN
 ```
 
 Status of this document: covers **M0, M1, M1.5 (voice) and hands-free voice**. Endpoints still to
-come are listed at the end. How each kind of device uses them: `docs/DEVICES.md`.
+come are listed at the end. How each kind of device uses them: [DEVICES.md](DEVICES.md).
 
 The ribbon interface itself is served at `GET /` (static, no token needed to load it; it asks for
 the token and sends it on every API call).
@@ -238,7 +238,7 @@ If the model fails, `reply` holds a safe explanation and `error` the same messag
 
 A continuous, two-way voice session. The client streams its microphone; the server listens for
 the wake word, transcribes locally (Whisper), answers with Gemma, speaks (Piper), and handles
-interruptions. The web app and `clients/speaker.py` both use it; any device that can open a
+interruptions. The web app, the Android app and the Linux/Windows client (`alfred listen`) all use it; any device that can open a
 WebSocket and play WAV audio can.
 
 **Auth**: header `Authorization: Bearer <token>`, or (browsers, which can't set headers) the
@@ -282,7 +282,7 @@ A typical exchange:
 → playback ended                          ← state listening … 8 s later: state idle
 ```
 
-Try it from a terminal: `python clients/speaker.py --server $ALFRED --token $TOKEN`.
+Try it from a terminal: `alfred listen` (the [`linux`](https://github.com/parsabe/Alfred/tree/linux) / [`windows`](https://github.com/parsabe/Alfred/tree/windows) client).
 
 ---
 

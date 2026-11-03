@@ -14,12 +14,15 @@ the same Alfred, the same memory, the same conversations, wherever you talk to h
 
 | Device | How | Hands-free “Alfred, …” |
 |---|---|---|
-| iPhone / Android phone or tablet | the Alfred web app, added to the home screen | yes, while the app is open |
+| Android phone or tablet | the **Alfred app** ([`android`](https://github.com/parsabe/Alfred/tree/android) branch), or the web app | yes, while the app is open |
+| iPhone / iPad | the Alfred web app, added to the home screen | yes, while the app is open |
 | Apple Watch | a Shortcut (“Hey Siri, ask Alfred”) | via Siri |
 | Wear OS watch | an HTTP-shortcut app or Tasker | via the shortcut/Assistant |
-| Mac / Windows / Linux | the web app installed from Chrome/Edge, or the terminal client | yes, while the app is open |
-| Raspberry Pi / old computer with a mic and speaker | `clients/speaker.py` | yes, always |
-| Anything else (home automation, scripts) | the HTTP API (`docs/API.md`) | — |
+| Windows PC | **Alfred.exe** ([`windows`](https://github.com/parsabe/Alfred/tree/windows) branch): app window, hands-free, terminal | yes |
+| Linux computer | **alfred** ([`linux`](https://github.com/parsabe/Alfred/tree/linux) branch): app window, hands-free, terminal | yes |
+| Mac | the web app installed from Chrome/Edge | yes, while the app is open |
+| Raspberry Pi / old computer with a mic and speaker | `alfred listen` from the [`linux`](https://github.com/parsabe/Alfred/tree/linux) branch | yes, always |
+| Anything else (home automation, scripts) | the HTTP API ([API.md](API.md)) | — |
 
 ---
 
@@ -28,7 +31,7 @@ the same Alfred, the same memory, the same conversations, wherever you talk to h
 On the Ubuntu server:
 
 ```bash
-git clone https://github.com/parsabe/Alfred.git && cd Alfred
+git clone --branch kernel https://github.com/parsabe/Alfred.git && cd Alfred
 sudo ./deploy/install.sh --tailscale
 ```
 
@@ -76,7 +79,21 @@ and consider `IP_ALLOWLIST` in `.env`.
 `sudo ./deploy/install.sh --lan` makes Alfred listen on `http://<server-ip>:8000`. Typing works
 from any device; **speaking does not** (no HTTPS), except on the server itself.
 
-## 3. Phone or tablet (iPhone, iPad, Android)
+## 3. Phone or tablet
+
+### Android: the Alfred app
+
+1. Get the APK: repository → **Actions** → **Android** → latest run → download
+   **alfred-android-debug** → unzip → open `app-debug.apk` on the phone (allow installing
+   unknown apps for your browser or file manager when asked). Or build it from the
+   [`android`](https://github.com/parsabe/Alfred/tree/android) branch with Android Studio.
+2. Install Tailscale on the phone and sign in.
+3. Open **Alfred**, enter your Alfred address, tap once, enter the access token (gear), allow the
+   microphone. Say “Alfred, …”.
+
+Long-press the app icon → **Change server** to switch servers.
+
+### iPhone, iPad (or Android without the app): the web app
 
 1. Open your Alfred address in **Safari** (iPhone/iPad) or **Chrome** (Android).
 2. Tap the gear, paste the **access token**.
@@ -126,48 +143,41 @@ the app's text-to-speech action. Add the shortcut as a watch tile or Assistant r
 
 ## 5. Laptop or desktop
 
-- **App:** open your Alfred address in Chrome or Edge → install icon in the address bar
-  (“Install Alfred”). Hands-free while the window is open.
-- **Terminal:**
-  ```bash
-  pip install httpx
-  python clients/alfred_cli.py --server https://<address> --token <token>
-  ```
+**Windows:** download **alfred-windows** from the repository's **Actions** → **Windows** run, run
+**Alfred-Setup.exe**, enter your address and token. Start menu → **Alfred** (app window) or
+**Alfred (hands-free)**. Details: [`windows`](https://github.com/parsabe/Alfred/tree/windows) branch.
+
+**Linux:** download **alfred-linux-x86_64** from **Actions** → **Linux**, unpack,
+`sudo apt install libportaudio2 && ./install.sh`. Then `alfred` (hands-free), `alfred open`
+(app window), `alfred chat` (terminal). Details: [`linux`](https://github.com/parsabe/Alfred/tree/linux) branch.
+
+**Mac (or any computer):** open your Alfred address in Chrome or Edge → install icon in the
+address bar (“Install Alfred”). Hands-free while the window is open.
 
 ## 6. Always-listening speaker (Raspberry Pi, old laptop)
 
-Any computer with a microphone and speaker becomes an Alfred speaker:
+Any Linux computer with a microphone and speaker becomes an Alfred speaker, using the client
+from the [`linux`](https://github.com/parsabe/Alfred/tree/linux) branch:
 
 ```bash
-sudo apt install -y python3-pip libportaudio2
-pip install websockets sounddevice numpy
-python3 clients/speaker.py --server https://<address> --token <token>
+sudo apt install -y python3 python3-venv libportaudio2 git
+git clone --branch linux https://github.com/parsabe/Alfred.git alfred-linux && cd alfred-linux
+./build.sh && ./install.sh --service      # asks for address + token, then listens at boot
+sudo loginctl enable-linger $USER         # start without anyone logging in
 ```
 
 Say “Alfred, …” from across the room. It mutes its microphone while Alfred talks (an ordinary
 speaker would let him hear himself). With a USB **speakerphone** that has echo cancellation
-(e.g. Jabra Speak, Anker PowerConf), add `--barge-in` so you can interrupt him by talking.
-`--list-devices` shows microphones and speakers; pick with `--input-device` / `--output-device`.
+(e.g. Jabra Speak, Anker PowerConf), run `alfred listen --barge-in --save` once so you can
+interrupt him by talking. `alfred devices` lists microphones and speakers; pick with
+`alfred listen --input-device N --output-device N --save`.
 
-To start it at boot on a Pi, create `~/.config/systemd/user/alfred-speaker.service`:
-
-```ini
-[Unit]
-Description=Alfred speaker
-[Service]
-Environment=ALFRED_SERVER=https://<address>
-Environment=ALFRED_TOKEN=<token>
-ExecStart=/usr/bin/python3 %h/Alfred/clients/speaker.py
-Restart=always
-[Install]
-WantedBy=default.target
-```
-
-then `systemctl --user enable --now alfred-speaker && sudo loginctl enable-linger $USER`.
+On a Raspberry Pi (ARM), build on the Pi itself with `./build.sh`; the ready-made download is for
+x86-64 PCs.
 
 ## 7. Your own integrations
 
-Everything above uses the same API, documented in `docs/API.md`:
+Everything above uses the same API, documented in [API.md](API.md):
 
 - `POST /v1/ask`: one question, one JSON answer (watches, shortcuts, automations)
 - `POST /v1/chat`: streamed answer (text, optionally with audio)

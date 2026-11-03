@@ -332,6 +332,9 @@ _(Claude Code updates this section as work progresses.)_
       `WS /v1/voice`, Whisper/Piper, Gemma 3 12B default, `/v1/ask` for watches/Shortcuts,
       installable app (PWA), speaker and terminal clients, `deploy/install.sh` for Ubuntu,
       `docs/DEVICES.md`
+- [x] Branch layout (2026-11-03, owner request; branches are never merged): `kernel` (server),
+      `web` (interface), `android` (Kotlin app), `linux` + `windows` (desktop client compiled
+      with PyInstaller), `docs` (this), `master` (README linking all). Each has its own CI.
 - [ ] M2 Tools
 - [ ] M3 Memory
 - [ ] M4 Integrations

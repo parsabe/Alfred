@@ -103,3 +103,20 @@ against the demo server.
 recognition of "Alfred", Piper's voice, and Gemma's answers. The adapters follow the installed
 libraries' APIs; the first real run is on the server. `deploy/install.sh` was syntax-checked
 but not run (no Ubuntu VM with systemd here).
+
+## Branch layout and native clients (2026-11-03)
+
+At the owner's request the project now lives on separate, never-merged branches:
+
+| Branch | Contents | Verified |
+|---|---|---|
+| `kernel` | server: agent, voice session, local Gemma/Whisper/Piper, API, installer, tests; fetches the interface from `web` | 93 tests + headless-browser e2e against the interface fetched from GitHub; CI green |
+| `web` | ribbon interface (PWA) | served and driven by the kernel e2e |
+| `android` | Kotlin app: Alfred's interface from your server, microphone bridged to Android permissions (server origin only), keep-awake, change-server shortcut | CI on GitHub: unit tests + debug APK build green |
+| `linux` | desktop client `alfred` (hands-free, app window, chat, status, devices), PyInstaller build, per-user installer, app-menu entries, optional user service | 19 tests; compiled binary tested here against the demo server (status, chat, hands-free over a fake microphone, rejected token) |
+| `windows` | same client as `Alfred.exe`, `build.ps1`, Inno Setup installer (per user, Start menu, autostart, PATH) | 19 tests here; compile and installer on GitHub's Windows CI |
+| `docs` | BRIEF, PLAN, API, DEVICES, MILESTONES | — |
+| `master` | README linking every branch | — |
+
+The Linux and Windows branches carry the same client code; a change to one should be copied to
+the other.
