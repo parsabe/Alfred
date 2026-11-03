@@ -1,61 +1,56 @@
-# Alfred
+# Alfred · kernel
 
-A discreet, highly capable personal assistant that lives on **your own server** and that you
-simply talk to. Say **“Alfred, …”** from your phone, watch, laptop or a speaker in the room; he
-answers aloud. Talk over him and he stops to listen.
+The server: Alfred's mind, ears and voice, and the API every device talks to.
+**Gemma 3 12B** (Ollama) thinks, **Whisper** hears, **Piper** speaks, all on your own machine,
+with no API keys and no cloud services.
 
-Everything runs on your machine: **Gemma 3 12B** thinks (via Ollama), **Whisper** hears,
-**Piper** speaks. No API keys, no cloud services, nothing you say leaves your server.
+> This is the `kernel` branch of [parsabe/Alfred](https://github.com/parsabe/Alfred).
+> Other parts live on their own branches: [`web`](https://github.com/parsabe/Alfred/tree/web)
+> (interface), [`android`](https://github.com/parsabe/Alfred/tree/android),
+> [`linux`](https://github.com/parsabe/Alfred/tree/linux),
+> [`windows`](https://github.com/parsabe/Alfred/tree/windows),
+> [`docs`](https://github.com/parsabe/Alfred/tree/docs).
 
-![The ribbon](docs/interface-reference.png)
-
-## Install (Ubuntu server)
+## Install on an Ubuntu server
 
 ```bash
-git clone https://github.com/parsabe/Alfred.git && cd Alfred
+git clone --branch kernel https://github.com/parsabe/Alfred.git && cd Alfred
 sudo ./deploy/install.sh --tailscale
 ```
 
-It installs Ollama + Gemma 3 12B, Alfred as a service that starts on boot, his hearing and voice,
-and Tailscale for a private `https://` address. At the end it prints **your Alfred address** and
-**access token**.
+Installs Ollama + Gemma 3 12B, fetches the web interface from the `web` branch, downloads
+Whisper and Piper, runs Alfred as a systemd service, and gives him a private `https://` address
+via Tailscale. Prints the address and your access token. Options: `--lan`,
+`ALFRED_MODEL=gemma3:4b` (faster on CPU-only servers). Connecting phones, watches and computers:
+[DEVICES.md](https://github.com/parsabe/Alfred/blob/docs/DEVICES.md).
 
-Then connect your devices. Phone app, Apple Watch, laptop and Raspberry Pi speaker are covered
-step by step in **[docs/DEVICES.md](docs/DEVICES.md)**.
+## What's here
 
-## Talking to him
-
-| | |
+| Path | |
 |---|---|
-| “Alfred, what's on today?” | he answers |
-| “Alfred?” | “Yes, sir?”, then he listens for the next sentence |
-| a follow-up within 8 s | no need to say his name again |
-| talk while he speaks | he lowers his voice, then stops and listens |
-| tap / Space | talk without saying his name |
-| `/` | type instead |
-| `,` | settings: server, token, hands-free, voice, captions, keep screen on |
+| `app/core/` | agent turn, hands-free voice session (wake word, barge-in), persona, context |
+| `app/llm/` | Ollama/OpenAI-compatible provider (Gemma), plus optional others, with failover |
+| `app/voice/` | Whisper + Piper (local), speech detection, wake word, sentence chunking |
+| `app/api/` | HTTP/SSE/WebSocket routes: `/v1/chat`, `/v1/ask`, `WS /v1/voice`, `/v1/tts`, `/v1/stt`, conversations, health |
+| `app/security/` | token auth, IP allowlist, log redaction |
+| `prompts/alfred_system.md` | Alfred's personality (edits apply immediately) |
+| `deploy/` | Ubuntu installer and systemd unit |
+| `scripts/` | demo server, model download, web fetch |
+| `tests/` | unit + integration tests, headless-browser e2e |
 
-His personality is in `prompts/alfred_system.md`; edits apply on the next sentence.
-All settings are in `.env` (see `.env.example`; on the server: `/opt/alfred/.env`).
-
-## Documentation
-
-- [docs/DEVICES.md](docs/DEVICES.md): using Alfred on phone, watch, laptop, speaker; remote access
-- [docs/API.md](docs/API.md): the HTTP/WebSocket API with examples, for your own integrations
-- [docs/PLAN.md](docs/PLAN.md): design; [docs/BRIEF.md](docs/BRIEF.md): requirements and progress
+API reference: [API.md](https://github.com/parsabe/Alfred/blob/docs/API.md).
 
 ## Development
 
-Needs Python 3.12+ and [uv](https://docs.astral.sh/uv/); for a real brain, Ollama with
-`ollama pull gemma3:12b`.
+Python 3.12+ and [uv](https://docs.astral.sh/uv/); for a real brain, Ollama with `ollama pull gemma3:12b`.
 
 ```bash
-make install     # dependencies + git hooks
-cp .env.example .env && make token   # put the token into ALFRED_API_TOKEN
-make models      # download Whisper + Piper once
-make dev         # http://127.0.0.1:8000
-make demo        # the interface with a stand-in brain (no Ollama needed)
-make test        # unit + integration tests
-make e2e         # hands-free flow in headless Chromium (Node + Playwright)
-make check       # lint + types + tests (what CI runs)
+make install                          # dependencies + git hooks
+cp .env.example .env && make token    # put the token into ALFRED_API_TOKEN
+make web                              # fetch the interface from the web branch
+make models                           # download Whisper + Piper once
+make dev                              # http://127.0.0.1:8000
+make demo                             # stand-in brain, no Ollama needed
+make check                            # lint + types + tests
+make e2e                              # hands-free flow in headless Chromium
 ```

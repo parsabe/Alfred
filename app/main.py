@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.api import ask, chat, conversations, health, voice, voice_ws
-from app.config import ROOT_DIR, Settings, get_settings
+from app.config import Settings, get_settings
 from app.core import tokens
 from app.core.agent import Agent
 from app.core.persona import Persona
@@ -24,8 +24,6 @@ from app.llm.router import build_llm
 from app.memory.short_term import ConversationStore
 from app.security import redaction
 from app.voice.base import STTProvider, TTSProvider
-
-WEB_DIR = ROOT_DIR / "web"
 
 
 def build_voice(settings: Settings) -> tuple[TTSProvider | None, STTProvider | None]:
@@ -149,7 +147,9 @@ def create_app(
     app.include_router(voice.router)
     app.include_router(ask.router)
     app.include_router(voice_ws.router)
-    if settings.web_ui_enabled and WEB_DIR.is_dir():
-        # The ribbon interface. Static and public; every API call it makes needs the token.
-        app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
+    if settings.web_ui_enabled and (settings.web_dir / "index.html").is_file():
+        # The ribbon interface (web branch). Static and public; its API calls need the token.
+        app.mount("/", StaticFiles(directory=settings.web_dir, html=True), name="web")
+    else:
+        log.info("no web interface in %s (run `make web`); serving the API only", settings.web_dir)
     return app

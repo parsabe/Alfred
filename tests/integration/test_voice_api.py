@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -107,10 +108,27 @@ def test_voice_endpoints_need_token(voice_client: TestClient) -> None:
     )
 
 
-def test_web_interface_is_served(voice_client: TestClient) -> None:
-    page = voice_client.get("/", headers={"Authorization": ""})
-    assert page.status_code == 200 and '<canvas id="ribbon"' in page.text
-    assert voice_client.get("/ribbon.js").status_code == 200
-    # API routes still win over the static mount
-    assert voice_client.get("/health").json()["status"] == "ok"
-    assert voice_client.get("/openapi.json").status_code == 200
+def test_web_interface_is_served(
+    settings: Settings, fake_llm: FakeProvider, tmp_path: Path
+) -> None:
+    web = tmp_path / "web"
+    web.mkdir()
+    (web / "index.html").write_text('<canvas id="ribbon"></canvas>')
+    (web / "ribbon.js").write_text("export {};")
+    settings.web_dir = web
+    with TestClient(create_app(settings, llm=fake_llm)) as client:
+        page = client.get("/")
+        assert page.status_code == 200 and '<canvas id="ribbon"' in page.text
+        assert client.get("/ribbon.js").status_code == 200
+        # API routes still win over the static mount
+        assert client.get("/health").json()["status"] == "ok"
+        assert client.get("/openapi.json").status_code == 200
+
+
+def test_api_only_without_web_interface(
+    settings: Settings, fake_llm: FakeProvider, tmp_path: Path
+) -> None:
+    settings.web_dir = tmp_path / "missing"
+    with TestClient(create_app(settings, llm=fake_llm)) as client:
+        assert client.get("/").status_code == 404
+        assert client.get("/health").status_code == 200

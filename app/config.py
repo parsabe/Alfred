@@ -96,6 +96,8 @@ class Settings(BaseSettings):
     fish_audio_model: str = "s2.1-pro-free"
     fish_audio_format: Literal["mp3", "wav", "opus"] = "mp3"
     web_ui_enabled: bool = True
+    # The ribbon interface (the `web` branch). `make web` / deploy/install.sh put it here.
+    web_dir: Path = ROOT_DIR / "web"
 
     # --- Integrations (all optional) ------------------------------------------------------
     web_search_provider: str = ""

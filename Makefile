@@ -1,4 +1,4 @@
-.PHONY: install dev run demo models test e2e lint fmt typecheck check migrate token docker-up docker-down
+.PHONY: install dev run demo models web test e2e lint fmt typecheck check migrate token docker-up docker-down
 
 install:            ## install dependencies (incl. dev tools) and git hooks
 	uv sync
@@ -10,10 +10,13 @@ dev:                ## run with auto-reload on http://127.0.0.1:8000
 demo:               ## the interface with a stand-in brain; ARGS=--fake-voice needs no models either
 	uv run python -m scripts.demo $(ARGS)
 
+web:                ## fetch/update the ribbon interface from the `web` branch into ./web
+	./scripts/fetch_web.sh
+
 models:             ## download Whisper and Piper models now (otherwise on first start)
 	uv run python -m scripts.download_models
 
-e2e:                ## drive the interface in headless Chromium (needs Node + Playwright)
+e2e: web           ## drive the interface in headless Chromium (needs Node + Playwright)
 	node tests/e2e/voice_loop.mjs
 
 run:                ## run without reload, listening on all interfaces

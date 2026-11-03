@@ -9,3 +9,6 @@ __pycache__/
 data/
 node_modules/
 dist/
+
+# the ribbon interface, fetched from the `web` branch
+web/

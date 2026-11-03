@@ -2,7 +2,7 @@
 # Install Alfred on an Ubuntu server: Gemma 3 12B (Ollama), local hearing and voice, a system
 # service that starts on boot, and (optionally) Tailscale for private HTTPS from your devices.
 #
-#   git clone https://github.com/parsabe/Alfred.git && cd Alfred
+#   git clone --branch kernel https://github.com/parsabe/Alfred.git && cd Alfred
 #   sudo ./deploy/install.sh                 # server only, reachable on this machine
 #   sudo ./deploy/install.sh --tailscale     # + private https:// address for phone/watch/laptop
 #   sudo ./deploy/install.sh --lan           # + listen on the local network (http, typing only)
@@ -49,7 +49,7 @@ fi
 
 say "Installing system packages"
 apt-get update -qq
-apt-get install -y -qq curl git ca-certificates rsync >/dev/null
+apt-get install -y -qq curl git ca-certificates rsync python3 >/dev/null
 
 say "Installing Ollama and $MODEL"
 if ! command -v ollama >/dev/null 2>&1; then
@@ -71,10 +71,15 @@ systemctl restart ollama
 for _ in $(seq 1 30); do curl -fs http://127.0.0.1:11434/api/tags >/dev/null && break; sleep 1; done
 ollama pull "$MODEL"
 
+say "Fetching the web interface (web branch)"
+if [ ! -f "$SRC/web/index.html" ] || [ -d "$SRC/web/.git" ]; then
+  "$SRC/scripts/fetch_web.sh" "$SRC/web"
+fi
+
 say "Installing Alfred into $DIR"
 id alfred >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/alfred --shell /usr/sbin/nologin alfred
 mkdir -p "$DIR"
-rsync -a --delete --exclude .git --exclude .venv --exclude data --exclude .env \
+rsync -a --delete --exclude .git --exclude web/.git --exclude .venv --exclude data --exclude .env \
   --exclude '__pycache__' "$SRC"/ "$DIR"/
 mkdir -p "$DIR/data"
 if ! command -v uv >/dev/null 2>&1 && [ ! -x /usr/local/bin/uv ]; then
@@ -130,7 +135,7 @@ cat <<DONE
   Open Alfred:   $URL
   Access token:  $( [ "$NEW_TOKEN" -eq 1 ] && echo "$TOKEN" || echo "(unchanged; it's ALFRED_API_TOKEN in $DIR/.env)" )
 
-  Next: connect your devices. See docs/DEVICES.md (phone app, Apple Watch, laptop, speaker).
+  Next: connect your devices: https://github.com/parsabe/Alfred/blob/docs/DEVICES.md
 
   Useful commands:
     sudo systemctl status alfred        # is it running?

@@ -16,6 +16,7 @@ services:
     volumes:
       - alfred-data:/app/data
       - ./prompts:/app/prompts:ro   # edit the persona without rebuilding
+    # run `make web` before building so the image includes the interface
     restart: unless-stopped
 
   ollama:
