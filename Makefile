@@ -1,4 +1,4 @@
-.PHONY: install dev run test lint fmt typecheck check migrate token docker-up docker-down
+.PHONY: install dev run demo test e2e lint fmt typecheck check migrate token docker-up docker-down
 
 install:            ## install dependencies (incl. dev tools) and git hooks
 	uv sync
@@ -6,6 +6,12 @@ install:            ## install dependencies (incl. dev tools) and git hooks
 
 dev:                ## run with auto-reload on http://127.0.0.1:8000
 	uv run uvicorn app.main:create_app --factory --reload --host 127.0.0.1 --port 8000
+
+demo:               ## try the interface with no keys (stand-in brain); ARGS=--tone for server audio
+	uv run python -m scripts.demo $(ARGS)
+
+e2e:                ## drive the interface in headless Chromium (needs Node + Playwright)
+	node tests/e2e/voice_loop.mjs
 
 run:                ## run without reload, listening on all interfaces
 	uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
