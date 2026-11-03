@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Alfred</string>
+    <string name="server_title">Your Alfred server</string>
+    <string name="server_message">The address deploy/install.sh printed, for example https://alfred.your-tailnet.ts.net. Use the https:// address so Alfred can hear you.</string>
+    <string name="server_hint">https://alfred.your-tailnet.ts.net</string>
+    <string name="connect">Connect</string>
+    <string name="cancel">Cancel</string>
+    <string name="retry">Retry</string>
+    <string name="change_server">Change server</string>
+    <string name="invalid_server">That doesn\'t look like a web address.</string>
+    <string name="insecure_server">Connected over http://. You can type to Alfred, but phones only allow the microphone on https:// addresses.</string>
+    <string name="unreachable_title">Can\'t reach Alfred</string>
+    <string name="unreachable_message">%1$s didn\'t answer (%2$s). Is the server on, and is Tailscale connected on this phone?</string>
+    <string name="mic_denied">Without the microphone you can still type to Alfred.</string>
+    <string name="shortcut_change_server">Change server</string>
+</resources>
