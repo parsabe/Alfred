@@ -13,7 +13,10 @@ export ALFRED=http://127.0.0.1:8000
 export TOKEN=...   # the value of ALFRED_API_TOKEN
 ```
 
-Status of this document: covers **M0 + M1**. Endpoints still to come are listed at the end.
+Status of this document: covers **M0, M1 and M1.5 (voice)**. Endpoints still to come are listed at the end.
+
+The ribbon interface itself is served at `GET /` (static, no token needed to load it; it asks for
+the token and sends it on every API call).
 
 ---
 
@@ -41,7 +44,7 @@ Over SSE, each event is sent as `event: <type>` plus `data: <the JSON above>`.
 | `error` | `{"code": "...", "message": "..."}` | `message` is safe to show the owner. A `done` follows. |
 | `done` | see below | End of the turn. |
 | `tool_call`, `tool_result`, `confirm_request`, `action_resolved` | — | From M2. |
-| `audio` | — | From M1.5 (voice). |
+| `audio` | `{"index": 1, "format": "mp3", "media_type": "audio/mpeg", "text": "Good evening, sir.", "data_b64": "…"}` | Voice mode only: one per spoken sentence, in order. Play them back to back. All audio arrives before `done`. |
 | `proactive` | — | From M5. |
 
 `done.data`:
@@ -64,7 +67,9 @@ from the price table in `app/core/tokens.py` (local models count as 0).
 
 Error codes so far: `llm_unavailable` (no model configured), `llm_unreachable`,
 `llm_rate_limited`, `llm_auth`, `llm_bad_request`, `llm_upstream`, `llm_refusal`,
-`llm_incomplete`, `turn_timeout`.
+`llm_incomplete`, `turn_timeout`, and for voice `voice_unavailable` (no Fish Audio key; the reply
+continues as text), `voice_auth`, `voice_quota`, `voice_rate_limited`, `voice_timeout`,
+`voice_unreachable`, `voice_upstream` (synthesis stopped for this turn; text continues).
 
 ---
 
@@ -83,6 +88,7 @@ curl -s -H "Authorization: Bearer $TOKEN" $ALFRED/health
   "status": "ok",
   "version": "0.1.0",
   "llm": {"configured": true, "provider": "local", "model": "gemma3:12b", "fallback": null},
+  "voice": {"tts": "fish_audio", "stt": "fish_audio"},
   "integrations": {"llm.anthropic": false, "llm.local": true, "voice.fish_audio": true, "weather": true, "...": false}
 }
 ```
@@ -100,7 +106,7 @@ Body:
 |---|---|---|
 | `message` | string, 1–20000 chars | required |
 | `conversation_id` | string | optional. Omit to start a new conversation; its id is on every event. |
-| `output_mode` | `"text"` (default) \| `"voice"` | `voice` makes Alfred answer in plain speakable sentences. |
+| `output_mode` | `"text"` (default) \| `"voice"` | `voice`: Alfred answers in plain speakable sentences, and the stream also carries `audio` events (one per sentence) in his voice. |
 | `attachments` | array | reserved; must be empty for now (`422` otherwise) |
 
 ```bash
@@ -155,6 +161,49 @@ for (;;) {
     if (data) handle(JSON.parse(data));   // {type, conversation_id, seq, data}
   }
 }
+```
+
+Voice mode, as the ribbon interface uses it:
+
+```bash
+curl -sN $ALFRED/v1/chat -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"message": "Is the car ready?", "output_mode": "voice"}'
+```
+
+```
+event: state   … {"value":"thinking"}
+event: token   … {"text":"Good evening, sir. "}
+event: audio   … {"index":1,"format":"mp3","media_type":"audio/mpeg","text":"Good evening, sir.","data_b64":"SUQz…"}
+event: token   … {"text":"The car is ready."}
+event: audio   … {"index":2, … "text":"The car is ready.", …}
+event: done    … {"status":"complete", …}
+event: state   … {"value":"idle"}
+```
+
+---
+
+## `POST /v1/tts`
+
+Speak any text in Alfred's voice. Body `{"text": "..."}` (1–2000 chars). Returns the audio bytes
+(`audio/mpeg` by default). `503` if voice isn't configured, `502` if Fish Audio fails.
+
+```bash
+curl -s $ALFRED/v1/tts -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"text": "Good evening, sir."}' --output alfred.mp3
+```
+
+## `POST /v1/stt`
+
+Transcribe recorded speech (Fish Audio). Multipart form: `audio` (file, max 10 MB; webm/ogg/mp4/
+wav/mp3) and optional `language` (e.g. `en`, `de`). Returns `{"text": "..."}`. `503` if not
+configured, `413` too large, `422` empty, `502` provider error.
+
+```bash
+curl -s $ALFRED/v1/stt -H "Authorization: Bearer $TOKEN" -F audio=@question.webm -F language=en
+```
+
+```json
+{"text": "Is the car ready?"}
 ```
 
 ---
@@ -225,7 +274,6 @@ curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$ALFRED/v1/conversations/1c
 
 | Milestone | Endpoints |
 |---|---|
-| M1.5 Voice | `POST /v1/tts`, `POST /v1/stt`, `audio` events in voice mode |
 | M2 Tools | `GET /v1/tools`, `GET /v1/actions/pending`, `POST /v1/actions/{id}/approve`, `POST /v1/actions/{id}/reject` |
 | M3 Memory | `GET/POST/DELETE /v1/memory` |
 | M5 Proactive | `GET /v1/events` |

@@ -315,10 +315,12 @@ _(Claude Code updates this section as work progresses.)_
 - [x] M0 Scaffold — plan approved 2026-11-02; config, auth, redaction, DB + migrations, health, tooling
 - [x] M1 Conversation core — providers (anthropic/openai/local/fake) + failover, SSE chat,
       conversations API, persona. Report: `docs/MILESTONES.md`
-- [ ] M1.5 Voice (Fish Audio) — moved up by owner decision D2
+- [x] M1.5 Voice (Fish Audio) — TTS/STT adapters, sentence-pipelined `audio` events, /v1/tts, /v1/stt
+- [x] Ribbon interface, live voice conversation — pulled forward from M7 at the owner's request
+      (2026-11-03): `web/`, served at `/`; `make demo` runs it with no keys; `make e2e` tests it
 - [ ] M2 Tools
 - [ ] M3 Memory
 - [ ] M4 Integrations
 - [ ] M5 Proactive
 - [ ] M6 Hardening
-- [ ] M7 Ribbon interface (`web/`) — owner decision D1 (original M7 "Voice" is now M1.5)
+- [ ] M7 Interface polish: confirmation cards (with M2), proactive messages (with M5), wake word

@@ -1,7 +1,10 @@
 # Alfred
 
-A discreet, highly capable personal assistant, built as a backend service that any interface can
-talk to: the ribbon UI, a CLI, a phone, a voice device.
+A discreet, highly capable personal assistant you talk to. Open it in a browser, tap anywhere,
+speak; Alfred answers aloud in his own voice while the ribbon moves with whoever is talking.
+The backend is a plain HTTP/SSE service, so any other interface (CLI, phone, voice device) can use it too.
+
+![The ribbon](docs/interface-reference.png)
 
 - Requirements and progress: [`docs/BRIEF.md`](docs/BRIEF.md) (Status at the bottom)
 - Design: [`docs/PLAN.md`](docs/PLAN.md)
@@ -29,7 +32,26 @@ Choose a model in `.env`:
 make dev            # http://127.0.0.1:8000  (docs at /docs)
 ```
 
-Say hello:
+Open **http://127.0.0.1:8000**, enter your token (gear icon), then tap anywhere and speak.
+
+| | |
+|---|---|
+| tap / Space | talk; tap again to stop. Tapping while Alfred speaks interrupts him. |
+| `/` | type instead of speaking |
+| `,` | settings: token, conversation mode, voice, captions, recognition engine, language |
+| Esc | stop everything |
+
+In **conversation mode** (on by default) Alfred listens again as soon as he finishes answering,
+so you can just keep talking.
+
+Alfred's voice comes from Fish Audio (`FISH_AUDIO_API_KEY`). Without it, the browser's built-in
+voice stands in. Speech recognition uses the browser's own (Chrome, Edge, Safari) or, in
+Firefox or if you choose it, Fish Audio on the server.
+
+**No keys yet?** `make demo` runs the interface with a stand-in brain so you can try it
+(token `demo-token-not-secret-0123456789abcdef`).
+
+Or from the command line:
 
 ```bash
 curl -sN http://127.0.0.1:8000/v1/chat \
@@ -53,4 +75,5 @@ docker compose exec ollama ollama pull gemma3:12b
 make test        # pytest
 make check       # ruff + mypy + pytest (what CI runs)
 make fmt         # format and autofix
+make e2e         # drive the voice interface in headless Chromium (Node + Playwright)
 ```

@@ -35,3 +35,34 @@ token never appears in logs; with no Ollama reachable, chat returns `llm_unreach
 
 **Known limitations:** no tools yet (M2); no summarization of very long conversations yet (M3;
 old turns simply fall out of the window); attachments rejected; single-process only.
+
+## M1.5 + interface — Live voice conversation (2026-11-03)
+
+Pulled forward at the owner's request ("where is the live chat?").
+
+**Built**
+- Fish Audio adapters (`app/voice/fish.py`): TTS (`/v1/tts`, voice `FISH_AUDIO_VOICE_ID`,
+  model `FISH_AUDIO_MODEL`) and STT (`/v1/asr`), with timeouts and retry on 429/5xx.
+- Voice pipeline (`app/core/voice_turn.py`): in `output_mode=voice`, the reply is split into
+  sentences as it streams (`app/voice/chunker.py`, abbreviation/decimal aware, early first clause)
+  and each sentence is synthesized in order and sent as an `audio` event; `done` follows the last
+  audio. If synthesis fails, one `error` event is sent and the reply continues as text.
+- Endpoints: `POST /v1/tts`, `POST /v1/stt`; `/health` reports voice providers.
+- The ribbon interface (`web/`, served at `/`, no build step): canvas renderer reproducing
+  `docs/interface-reference.png` (additive layered lobes, crossing teal strand, bloom), animated
+  per state: idle hairline, listening follows the mic, thinking undulates, speaking follows
+  Alfred's actual audio. Tap/Space to talk, conversation mode, interruption, captions, typing
+  (`/`), settings (token stays in the browser), browser or server speech recognition,
+  browser-voice fallback when the server has no voice.
+- `make demo`: the whole interface with no keys (stand-in brain, temporary DB).
+
+**Tests**: 60 Python tests (17 new: chunker, Fish request shapes/retries/auth, voice streaming
+order, failure fallback, endpoints, static UI) + `make e2e`, which drives headless Chromium with a
+fake microphone through a typed turn, a spoken turn in conversation mode, and an interruption.
+
+**Not verified here:** real Fish Audio calls (host blocked in this sandbox): the request format
+follows Fish's public API and is unit-tested, but the first real call happens on your machine.
+Browser speech recognition can't run headless, so the e2e test uses the server path.
+
+**Known limitations:** Chrome's built-in recognition sends audio to Google; choose "Alfred's
+server" in settings to keep audio with Fish Audio instead. No wake word yet (tap to talk).
