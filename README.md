@@ -1,61 +1,49 @@
-# Alfred
+# Alfred · web
 
-A discreet, highly capable personal assistant that lives on **your own server** and that you
-simply talk to. Say **“Alfred, …”** from your phone, watch, laptop or a speaker in the room; he
-answers aloud. Talk over him and he stops to listen.
+The ribbon interface: Alfred's face in any browser, and the app you install on your phone,
+tablet or computer. Plain HTML/CSS/JS, no build step.
 
-Everything runs on your machine: **Gemma 3 12B** thinks (via Ollama), **Whisper** hears,
-**Piper** speaks. No API keys, no cloud services, nothing you say leaves your server.
+> This is the `web` branch of [parsabe/Alfred](https://github.com/parsabe/Alfred). The server
+> ([`kernel`](https://github.com/parsabe/Alfred/tree/kernel)) fetches this branch and serves it
+> at `/`, so normally you never deploy it yourself: `deploy/install.sh` and `make web` do it.
 
-![The ribbon](docs/interface-reference.png)
+![The ribbon](icons/icon-512.png)
 
-## Install (Ubuntu server)
+## What it does
 
-```bash
-git clone https://github.com/parsabe/Alfred.git && cd Alfred
-sudo ./deploy/install.sh --tailscale
-```
+- **Hands-free:** streams the microphone to Alfred's server (`WS /v1/voice`), which listens for
+  “Alfred, …”, answers, and handles interruptions. Tap or press Space to talk without his name.
+- **The ribbon** (`ribbon.js`) shows who is talking: a resting hairline when he's asleep, following
+  your voice while you speak, undulating while he thinks, swelling with his voice as he speaks.
+- **Plays his voice** with ducking/interruption (`audio.js`); falls back to the browser's own voice
+  if the server has none.
+- **Installable** (`manifest.webmanifest`, `sw.js`): Add to Home Screen on iPhone/Android,
+  Install in Chrome/Edge. Keeps the screen awake while listening.
+- Captions, typing (`/`), settings (`,`): server, token (kept on the device), hands-free,
+  voice, captions, keep screen on.
 
-It installs Ollama + Gemma 3 12B, Alfred as a service that starts on boot, his hearing and voice,
-and Tailscale for a private `https://` address. At the end it prints **your Alfred address** and
-**access token**.
-
-Then connect your devices. Phone app, Apple Watch, laptop and Raspberry Pi speaker are covered
-step by step in **[docs/DEVICES.md](docs/DEVICES.md)**.
-
-## Talking to him
-
-| | |
+| File | |
 |---|---|
-| “Alfred, what's on today?” | he answers |
-| “Alfred?” | “Yes, sir?”, then he listens for the next sentence |
-| a follow-up within 8 s | no need to say his name again |
-| talk while he speaks | he lowers his voice, then stops and listens |
-| tap / Space | talk without saying his name |
-| `/` | type instead |
-| `,` | settings: server, token, hands-free, voice, captions, keep screen on |
+| `index.html`, `style.css` | page and settings sheet |
+| `app.js` | connection, state machine, input, settings |
+| `audio.js` | microphone capture, playback, ducking, browser-voice fallback |
+| `capture-worklet.js` | audio thread: microphone → 16 kHz 16-bit PCM frames |
+| `ribbon.js` | the ribbon renderer (canvas, additive layers, bloom) |
+| `sw.js`, `manifest.webmanifest`, `icons/` | installable app |
 
-His personality is in `prompts/alfred_system.md`; edits apply on the next sentence.
-All settings are in `.env` (see `.env.example`; on the server: `/opt/alfred/.env`).
+## Hosting it somewhere else
 
-## Documentation
+It works from any static host as long as the page is `https://` (browsers only allow the
+microphone on secure pages):
 
-- [docs/DEVICES.md](docs/DEVICES.md): using Alfred on phone, watch, laptop, speaker; remote access
-- [docs/API.md](docs/API.md): the HTTP/WebSocket API with examples, for your own integrations
-- [docs/PLAN.md](docs/PLAN.md): design; [docs/BRIEF.md](docs/BRIEF.md): requirements and progress
+1. Serve these files (`python3 -m http.server`, nginx, GitHub Pages, …).
+2. On the server, allow that origin: `CORS_ORIGINS=https://your-host` in `.env`.
+3. In the app's settings, set **Server** to your Alfred address.
 
-## Development
+## Previews without a server
 
-Needs Python 3.12+ and [uv](https://docs.astral.sh/uv/); for a real brain, Ollama with
-`ollama pull gemma3:12b`.
+`index.html?demo=speaking` (also `idle`, `listening`, `thinking`) animates the ribbon with a
+synthetic voice level, no server needed.
 
-```bash
-make install     # dependencies + git hooks
-cp .env.example .env && make token   # put the token into ALFRED_API_TOKEN
-make models      # download Whisper + Piper once
-make dev         # http://127.0.0.1:8000
-make demo        # the interface with a stand-in brain (no Ollama needed)
-make test        # unit + integration tests
-make e2e         # hands-free flow in headless Chromium (Node + Playwright)
-make check       # lint + types + tests (what CI runs)
-```
+The end-to-end test for this interface lives in the kernel branch (`make e2e`), because it
+needs the server.
