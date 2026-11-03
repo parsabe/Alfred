@@ -62,7 +62,20 @@ Phones only allow the microphone on **https://** pages, so Alfred needs an HTTPS
 
 ### Alternative: your own domain (reachable from anywhere, including a watch on its own LTE)
 
-Point a DNS name at the server and put Caddy in front (automatic HTTPS):
+**With aaPanel / BaoTa or an existing nginx** (domain already pointing at the server):
+
+```bash
+sudo ./deploy/install.sh --domain alfred.example.com
+```
+
+The installer keeps Alfred private on `127.0.0.1:8000`, writes the nginx settings he needs to
+`/opt/alfred/deploy/nginx-alfred.example.com.conf`, and prints the panel steps: issue a Let's
+Encrypt certificate for the site, add a reverse proxy to `http://127.0.0.1:8000`, and make sure
+the proxy configuration has the WebSocket `Upgrade`/`Connection` headers, `proxy_buffering off`
+and `proxy_read_timeout 3600s` (otherwise hands-free voice disconnects and replies arrive all at
+once instead of word by word).
+
+**Without a panel**, Caddy does HTTPS automatically:
 
 ```bash
 sudo apt install caddy
@@ -194,4 +207,6 @@ Everything above uses the same API, documented in [API.md](API.md):
 | He answers the TV | lower `FOLLOW_UP_WINDOW_S`, or use push-to-talk (settings → Hands-free off) |
 | He interrupts himself on a speaker | don't use `--barge-in` without an echo-cancelling speakerphone |
 | Answers are slow | `ALFRED_MODEL=gemma3:4b`, or a GPU; `journalctl -u ollama` shows load times |
+| Install stops: `uv: Permission denied` | update (`git pull`) and run the installer again; fixed on 2026-11-03 |
+| Voice disconnects / replies arrive all at once behind nginx | add the nginx lines from `/opt/alfred/deploy/nginx-<domain>.conf` |
 | Anything else | `sudo journalctl -u alfred -n 100` |
